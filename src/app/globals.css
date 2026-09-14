@@ -388,3 +388,40 @@ select.input-field {
   border-color: rgba(227, 27, 115, 0.45);
   background: linear-gradient(145deg, rgba(227, 27, 115, 0.14), rgba(34, 14, 41, 0.8));
 }
+
+/* ── Print Styles for Invoice Output ─────────── */
+@media print {
+  @page {
+    size: auto;
+    margin: 15mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    background-image: none !important;
+  }
+
+  /* Hide app navigation and controls when printing */
+  header,
+  aside,
+  .no-print,
+  button,
+  .view-switcher {
+    display: none !important;
+  }
+
+  /* Invoice document takes full width on printed page */
+  .invoice-printable-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    display: block !important;
+  }
+}
+

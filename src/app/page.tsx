@@ -28,6 +28,7 @@ import {
   FolderClock,
   FileSpreadsheet,
   LayoutDashboard,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
 import type { Model, Sale, Tier, SummaryData, ParsedPurchase, SavedSummary } from "@/lib/types";
@@ -659,6 +660,25 @@ export default function SalesTrackerPage() {
                   {savedSummaries.length}
                 </span>
               )}
+            </Link>
+
+            {/* Invoice Generator Link */}
+            <Link
+              href="/invoice"
+              title="Invoice Generator"
+              className={`w-full flex items-center ${
+                isSidebarOpen ? "justify-between px-3.5" : "justify-center px-2"
+              } py-2.5 rounded-xl font-bold text-xs text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6] border border-transparent hover:border-[#FFA4D2]/20 transition group`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Receipt
+                  size={18}
+                  className="text-[#FFA4D2]/80 group-hover:text-[#FF77B9] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="truncate">Invoice Generator</span>
+                )}
+              </div>
             </Link>
           </div>
         </aside>
