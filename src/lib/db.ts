@@ -1,0 +1,281 @@
+import { getSupabase } from "./supabase";
+import type { Model, Sale, SaleInput, SummaryData } from "./types";
+
+// ── In-Memory Fallback Store (when Supabase credentials are not provided) ──
+
+let memModels: Model[] = [
+  { id: 1, name: "Nadya", created_at: new Date().toISOString() },
+];
+
+let memSales: Sale[] = [
+  {
+    id: 5555,
+    name: "Kody",
+    username: "@u80636081",
+    amount: 30.99,
+    sale_type: "message",
+    model: "Nadya",
+    tier: "none",
+    date: "2025-10-14",
+    raw_text: "🐳(Kody)\n@u80636081\nXXXtreme Spenders-V8Ctalking rn 10/14/25\nhas purchased your message for $30.99!",
+    created_at: new Date("2025-10-14T10:00:00Z").toISOString(),
+  },
+];
+
+let nextSaleId = 5556;
+let nextModelId = 2;
+
+// ── Models ────────────────────────────────────────────────────────────
+
+export async function getModels(): Promise<Model[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("models")
+      .select("*")
+      .order("id", { ascending: true });
+    if (error) {
+      console.error("Supabase getModels error, using fallback:", error.message);
+      return memModels;
+    }
+    return data ?? [];
+  }
+  return [...memModels];
+}
+
+export async function createModel(name: string): Promise<Model> {
+  const trimmed = name.trim();
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("models")
+      .insert({ name: trimmed })
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+  const existing = memModels.find(
+    (m) => m.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (existing) return existing;
+
+  const newModel: Model = {
+    id: nextModelId++,
+    name: trimmed,
+    created_at: new Date().toISOString(),
+  };
+  memModels.push(newModel);
+  return newModel;
+}
+
+// ── Sales ─────────────────────────────────────────────────────────────
+
+export async function getSales(): Promise<Sale[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("sales")
+      .select("*")
+      .order("id", { ascending: false });
+    if (error) {
+      console.error("Supabase getSales error, using fallback:", error.message);
+      return memSales;
+    }
+    return data ?? [];
+  }
+  return [...memSales].sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+export async function createSale(
+  input: SaleInput | SaleInput[]
+): Promise<Sale[]> {
+  const items = Array.isArray(input) ? input : [input];
+  const sb = getSupabase();
+
+  if (sb) {
+    const { data, error } = await sb
+      .from("sales")
+      .insert(
+        items.map((item) => ({
+          name: item.name,
+          username: item.username,
+          amount: item.amount,
+          sale_type: item.sale_type,
+          model: item.model,
+          tier: item.tier.toLowerCase(),
+          date: item.date || new Date().toISOString().slice(0, 10),
+          raw_text: item.raw_text ?? null,
+        }))
+      )
+      .select();
+    if (error) throw new Error(error.message);
+    return data as Sale[];
+  }
+
+  const created: Sale[] = items.map((item) => ({
+    id: nextSaleId++,
+    name: item.name,
+    username: item.username,
+    amount: item.amount,
+    sale_type: item.sale_type,
+    model: item.model,
+    tier: item.tier.toLowerCase() as Sale["tier"],
+    date: item.date || new Date().toISOString().slice(0, 10),
+    raw_text: item.raw_text ?? null,
+    created_at: new Date().toISOString(),
+  }));
+
+  memSales.unshift(...created);
+  return created;
+}
+
+export async function updateSale(
+  id: number | string,
+  updates: Partial<SaleInput>
+): Promise<Sale> {
+  const numericId = Number(id);
+  const sb = getSupabase();
+
+  if (sb) {
+    const updatePayload: Record<string, unknown> = { ...updates };
+    if (updates.tier) {
+      updatePayload.tier = updates.tier.toLowerCase();
+    }
+    const { data, error } = await sb
+      .from("sales")
+      .update(updatePayload)
+      .eq("id", numericId)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data as Sale;
+  }
+
+  const idx = memSales.findIndex((s) => Number(s.id) === numericId);
+  if (idx === -1) throw new Error(`Sale with ID ${id} not found`);
+
+  memSales[idx] = {
+    ...memSales[idx],
+    ...updates,
+    tier: (updates.tier ? updates.tier.toLowerCase() : memSales[idx].tier) as Sale["tier"],
+  };
+  return memSales[idx];
+}
+
+export async function deleteSale(id: number | string): Promise<void> {
+  const numericId = Number(id);
+  const sb = getSupabase();
+
+  if (sb) {
+    const { error } = await sb.from("sales").delete().eq("id", numericId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  memSales = memSales.filter((s) => Number(s.id) !== numericId);
+}
+
+// ── Summarize ─────────────────────────────────────────────────────────
+
+export async function getSummary(): Promise<SummaryData> {
+  const sales = await getSales();
+
+  const total_revenue = sales.reduce((sum, s) => sum + Number(s.amount), 0);
+  const sales_count = sales.length;
+
+  const vip_subtotal = sales
+    .filter((s) => s.tier?.toLowerCase() === "vip")
+    .reduce((sum, s) => sum + Number(s.amount), 0);
+
+  const free_subtotal = sales
+    .filter((s) => s.tier?.toLowerCase() === "free")
+    .reduce((sum, s) => sum + Number(s.amount), 0);
+
+  const none_subtotal = sales
+    .filter((s) => s.tier?.toLowerCase() === "none" || !s.tier)
+    .reduce((sum, s) => sum + Number(s.amount), 0);
+
+  // Group by model
+  const modelMap = new Map<string, { revenue: number; count: number }>();
+  for (const s of sales) {
+    const m = s.model || "Unknown";
+    const cur = modelMap.get(m) ?? { revenue: 0, count: 0 };
+    cur.revenue += Number(s.amount);
+    cur.count += 1;
+    modelMap.set(m, cur);
+  }
+  const by_model = Array.from(modelMap.entries()).map(([model, data]) => ({
+    model,
+    revenue: Math.round(data.revenue * 100) / 100,
+    count: data.count,
+  }));
+
+  // Group by sale_type
+  const typeMap = new Map<string, { revenue: number; count: number }>();
+  for (const s of sales) {
+    const t = s.sale_type || "other";
+    const cur = typeMap.get(t) ?? { revenue: 0, count: 0 };
+    cur.revenue += Number(s.amount);
+    cur.count += 1;
+    typeMap.set(t, cur);
+  }
+  const by_sale_type = Array.from(typeMap.entries()).map(([sale_type, data]) => ({
+    sale_type,
+    revenue: Math.round(data.revenue * 100) / 100,
+    count: data.count,
+  }));
+
+  // Top buyer
+  const buyerMap = new Map<
+    string,
+    { name: string; username: string; total_spend: number; count: number }
+  >();
+  for (const s of sales) {
+    const key = (s.username || s.name).toLowerCase();
+    const cur = buyerMap.get(key) ?? {
+      name: s.name,
+      username: s.username,
+      total_spend: 0,
+      count: 0,
+    };
+    cur.total_spend += Number(s.amount);
+    cur.count += 1;
+    buyerMap.set(key, cur);
+  }
+
+  let top_buyer: SummaryData["top_buyer"] = null;
+  for (const buyer of buyerMap.values()) {
+    if (!top_buyer || buyer.total_spend > top_buyer.total_spend) {
+      top_buyer = {
+        name: buyer.name,
+        username: buyer.username,
+        total_spend: Math.round(buyer.total_spend * 100) / 100,
+        count: buyer.count,
+      };
+    }
+  }
+
+  // Date range
+  const dates = sales
+    .map((s) => s.date)
+    .filter(Boolean)
+    .map((d) => (typeof d === "string" ? d.slice(0, 10) : ""))
+    .filter(Boolean)
+    .sort();
+
+  return {
+    total_revenue: Math.round(total_revenue * 100) / 100,
+    sales_count,
+    vip_subtotal: Math.round(vip_subtotal * 100) / 100,
+    free_subtotal: Math.round(free_subtotal * 100) / 100,
+    none_subtotal: Math.round(none_subtotal * 100) / 100,
+    by_model,
+    by_sale_type,
+    top_buyer,
+    date_range: {
+      min_date: dates[0] ?? null,
+      max_date: dates[dates.length - 1] ?? null,
+    },
+  };
+}
