@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useId } from "react";
+import { useState, useEffect, useCallback, useId, useMemo } from "react";
 import {
   Download,
   Plus,
@@ -18,6 +18,14 @@ import {
   Calendar,
   Layers,
   ShoppingBag,
+  Menu,
+  Database,
+  Search,
+  Filter,
+  Users,
+  ChevronRight,
+  ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
 import type { Model, Sale, Tier, SummaryData, ParsedPurchase } from "@/lib/types";
 import { parsePurchaseText } from "@/lib/parser";
@@ -72,6 +80,11 @@ function formatDate(dateStr: string): string {
 export default function SalesTrackerPage() {
   const textareaId = useId();
   const modelSelectId = useId();
+
+  // Layout states (Sidebar & Navigation)
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [activeFilter, setActiveFilter] = useState<string>("all"); // "all" | "vip" | "free" | "none" | model name
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Core Data States
   const [models, setModels] = useState<Model[]>([]);
@@ -314,7 +327,7 @@ export default function SalesTrackerPage() {
   const handleExportExcel = async () => {
     try {
       const XLSX = await import("xlsx");
-      const exportRows = sales.map((s) => ({
+      const exportRows = filteredSales.map((s) => ({
         ID: s.id,
         Name: s.name,
         Username: s.username,
@@ -327,7 +340,7 @@ export default function SalesTrackerPage() {
 
       const worksheet = XLSX.utils.json_to_sheet(exportRows);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "All Purchases");
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Purchases");
 
       const today = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(workbook, `sales-export-${today}.xlsx`);
@@ -355,18 +368,58 @@ export default function SalesTrackerPage() {
     }
   };
 
+  // ── Client-side Filtered Sales ─────────────────────────────────────
+
+  const filteredSales = useMemo(() => {
+    return sales.filter((s) => {
+      // Filter by active sidebar tab
+      if (activeFilter === "vip" && s.tier?.toLowerCase() !== "vip") return false;
+      if (activeFilter === "free" && s.tier?.toLowerCase() !== "free") return false;
+      if (activeFilter === "none" && s.tier?.toLowerCase() !== "none" && s.tier) return false;
+      if (
+        activeFilter.startsWith("model:") &&
+        s.model?.toLowerCase() !== activeFilter.replace("model:", "").toLowerCase()
+      ) {
+        return false;
+      }
+
+      // Filter by search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = s.name?.toLowerCase().includes(q);
+        const matchesUser = s.username?.toLowerCase().includes(q);
+        const matchesModel = s.model?.toLowerCase().includes(q);
+        const matchesType = s.sale_type?.toLowerCase().includes(q);
+        const matchesId = String(s.id).includes(q);
+        return matchesName || matchesUser || matchesModel || matchesType || matchesId;
+      }
+
+      return true;
+    });
+  }, [sales, activeFilter, searchQuery]);
+
   // ── Client-side Subtotals (mandated by spec: computed client-side from loaded rows) ──
 
-  const totalAmount = sales.reduce((sum, s) => sum + Number(s.amount || 0), 0);
-  const vipAmount = sales
+  const totalAmount = filteredSales.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+  const vipAmount = filteredSales
     .filter((s) => s.tier?.toLowerCase() === "vip")
     .reduce((sum, s) => sum + Number(s.amount || 0), 0);
-  const freeAmount = sales
+  const freeAmount = filteredSales
     .filter((s) => s.tier?.toLowerCase() === "free")
     .reduce((sum, s) => sum + Number(s.amount || 0), 0);
-  const noneAmount = sales
+  const noneAmount = filteredSales
     .filter((s) => s.tier?.toLowerCase() === "none" || !s.tier)
     .reduce((sum, s) => sum + Number(s.amount || 0), 0);
+
+  // Model counts
+  const modelCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const s of sales) {
+      const m = s.model || "Unknown";
+      map[m] = (map[m] || 0) + 1;
+    }
+    return map;
+  }, [sales]);
 
   return (
     <div className="min-h-screen bg-[#120815] text-[#FFFDE6] flex flex-col selection:bg-[#E31B73] selection:text-[#FFFDE6]">
@@ -395,433 +448,756 @@ export default function SalesTrackerPage() {
         </div>
       )}
 
-      {/* ── Top App Bar ────────────────────────────────────── */}
-      <header className="border-b border-[#FFA4D2]/20 bg-[#1a0b1f]/90 backdrop-blur sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between">
+      {/* ═════════════════════════════════════════════════════
+          TOP NAVBAR
+          ═════════════════════════════════════════════════════ */}
+      <header className="border-b border-[#FFA4D2]/20 bg-[#1a0b1f]/95 backdrop-blur-md sticky top-0 z-30 px-4 md:px-6 py-3 flex items-center justify-between shadow-lg shadow-black/20">
         <div className="flex items-center gap-3">
-          {/* Logo icon with user's palette gradient */}
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#E31B73] via-[#FF77B9] to-[#FFA4D2] flex items-center justify-center shadow-lg shadow-[#E31B73]/30 text-[#FFFDE6] font-black text-base">
-            $
-          </div>
-          <div>
-            <h1 className="font-bold text-base tracking-tight text-[#FFFDE6] flex items-center gap-2">
-              Sales Tracker
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E31B73]/20 text-[#FFA4D2] border border-[#E31B73]/40">
-                Single-User
-              </span>
-            </h1>
-            <p className="text-xs text-[#d9a0c2]">
-              Unstructured Purchase Parser &amp; Supabase Database
-            </p>
+          {/* Sidebar toggle button */}
+          <button
+            type="button"
+            title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 rounded-xl bg-[#250f2c] hover:bg-[#34143d] text-[#FFA4D2] hover:text-[#FFFDE6] border border-[#FFA4D2]/25 transition shadow-sm"
+          >
+            <Menu size={18} />
+          </button>
+
+          {/* Logo brand */}
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#E31B73] via-[#FF77B9] to-[#FFA4D2] flex items-center justify-center shadow-lg shadow-[#E31B73]/35 text-[#FFFDE6] font-black text-base">
+              $
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-base tracking-tight text-[#FFFDE6]">
+                  Sales Tracker
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E31B73]/20 text-[#FFA4D2] border border-[#E31B73]/40 hidden sm:inline-block">
+                  Internal Pro
+                </span>
+              </div>
+              <p className="text-[11px] text-[#d9a0c2] hidden md:block">
+                Regex Parser &amp; Supabase Database
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-[#FFA4D2]">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#FF77B9] animate-pulse shadow-sm shadow-[#FF77B9]" />
-          <span className="font-medium">System Active</span>
+        {/* Quick KPI Chips in Navbar */}
+        <div className="hidden lg:flex items-center gap-3 px-3 py-1 rounded-xl bg-[#220d29] border border-[#FFA4D2]/20 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-[#FFA4D2]">Total Rev:</span>
+            <span className="font-mono font-extrabold text-[#FFFDE6]">
+              {formatCurrency(totalAmount)}
+            </span>
+          </div>
+          <span className="text-[#FFA4D2]/30">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-[#FF77B9]">VIP:</span>
+            <span className="font-mono font-bold text-[#FF77B9]">
+              {formatCurrency(vipAmount)}
+            </span>
+          </div>
+          <span className="text-[#FFA4D2]/30">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-[#d9a0c2]">Rows:</span>
+            <span className="font-mono font-bold text-[#FFFDE6]">
+              {filteredSales.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Right side actions in Navbar */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Database Live Ping */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#200e26] border border-[#FFA4D2]/20 text-[11px] text-[#FFA4D2]">
+            <span className="inline-block w-2 h-2 rounded-full bg-[#FF77B9] animate-pulse shadow-sm shadow-[#FF77B9]" />
+            <span className="font-semibold">Supabase Live</span>
+          </div>
+
+          {/* Quick Summary Modal Button */}
+          <button
+            type="button"
+            onClick={handleOpenSummary}
+            className="px-3 py-1.5 rounded-xl bg-[#FFA4D2]/15 hover:bg-[#FFA4D2]/25 border border-[#FFA4D2]/35 text-[#FFFDE6] font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+          >
+            <BarChart3 size={14} className="text-[#FF77B9]" />
+            <span className="hidden sm:inline">Summary</span>
+          </button>
+
+          {/* Save / Export (.xlsx) Button */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-600/20"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Export (.xlsx)</span>
+          </button>
+
+          {/* Admin Avatar */}
+          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#E31B73] to-[#FFA4D2] p-[1.5px] flex items-center justify-center shadow-md">
+            <div className="h-full w-full rounded-full bg-[#1c0b20] flex items-center justify-center text-[11px] font-bold text-[#FFFDE6]">
+              👑
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* ── Main Two-Panel Layout ──────────────────────────── */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* ═════════════════════════════════════════════════════
+          APP BODY: SIDEBAR + MAIN CONTENT WORKSPACE
+          ═════════════════════════════════════════════════════ */}
+      <div className="flex-1 flex overflow-hidden">
         
-        {/* ═════════════════════════════════════════════════════
-            LEFT PANEL: "Enter Purchase Details" (5 cols on lg)
-            ═════════════════════════════════════════════════════ */}
-        <section
-          aria-label="Enter Purchase Details"
-          className="lg:col-span-5 bg-[#200e26]/90 border border-[#FFA4D2]/20 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 relative overflow-hidden backdrop-blur-xl"
+        {/* ── LEFT SIDEBAR ─────────────────────────────────── */}
+        <aside
+          className={`bg-[#180a1c] border-r border-[#FFA4D2]/20 transition-all duration-300 flex flex-col shrink-0 z-20 ${
+            isSidebarOpen ? "w-64" : "w-0 -translate-x-full md:translate-x-0 md:w-16"
+          }`}
         >
-          {/* Decorative pink glow from palette */}
-          <div className="absolute -top-12 -left-12 w-48 h-48 bg-[#E31B73]/15 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-12 -right-12 w-44 h-44 bg-[#FF77B9]/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="p-4 flex flex-col gap-5 flex-1 overflow-y-auto">
+            
+            {/* Nav Categories */}
+            <div className="flex flex-col gap-1">
+              <span
+                className={`text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5 mb-1 ${
+                  !isSidebarOpen && "md:hidden"
+                }`}
+              >
+                Views &amp; Filters
+              </span>
 
-          {/* Panel Header & Model Dropdown */}
-          <div className="flex items-start justify-between gap-3 pb-1 border-b border-[#FFA4D2]/15">
-            <div>
-              <h2 className="text-base font-bold text-[#FFFDE6] tracking-tight">
-                Enter Purchase Details
-              </h2>
-              <p className="text-xs text-[#d9a0c2]">
-                Paste raw purchase message to parse &amp; save
-              </p>
+              {/* All Purchases Link */}
+              <button
+                type="button"
+                onClick={() => setActiveFilter("all")}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
+                  activeFilter === "all"
+                    ? "bg-gradient-to-r from-[#E31B73]/25 to-[#FF77B9]/20 text-[#FFFDE6] border border-[#E31B73]/50 shadow-md shadow-[#E31B73]/15"
+                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <TrendingUp size={16} className="text-[#FF77B9]" />
+                  {isSidebarOpen && <span>All Purchases</span>}
+                </div>
+                {isSidebarOpen && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#2a1032] text-[#FFA4D2]">
+                    {sales.length}
+                  </span>
+                )}
+              </button>
+
+              {/* VIP Spenders Link */}
+              <button
+                type="button"
+                onClick={() => setActiveFilter("vip")}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
+                  activeFilter === "vip"
+                    ? "bg-[#E31B73]/30 text-[#FFFDE6] border border-[#E31B73]/60 shadow-md shadow-[#E31B73]/20"
+                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Crown size={16} className="text-[#E31B73]" />
+                  {isSidebarOpen && <span>VIP Spenders</span>}
+                </div>
+                {isSidebarOpen && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#E31B73]/20 text-[#FF77B9]">
+                    {sales.filter((s) => s.tier?.toLowerCase() === "vip").length}
+                  </span>
+                )}
+              </button>
+
+              {/* Free Tier Link */}
+              <button
+                type="button"
+                onClick={() => setActiveFilter("free")}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
+                  activeFilter === "free"
+                    ? "bg-[#FFA4D2]/25 text-[#FFFDE6] border border-[#FFA4D2]/50 shadow-md shadow-[#FFA4D2]/15"
+                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Gift size={16} className="text-[#FFA4D2]" />
+                  {isSidebarOpen && <span>Free Tier</span>}
+                </div>
+                {isSidebarOpen && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#FFA4D2]/20 text-[#FFA4D2]">
+                    {sales.filter((s) => s.tier?.toLowerCase() === "free").length}
+                  </span>
+                )}
+              </button>
+
+              {/* None Tier Link */}
+              <button
+                type="button"
+                onClick={() => setActiveFilter("none")}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
+                  activeFilter === "none"
+                    ? "bg-[#FFFDE6]/20 text-[#FFFDE6] border border-[#FFFDE6]/40 shadow-md shadow-[#FFFDE6]/15"
+                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <CircleDot size={16} className="text-[#FFFDE6]" />
+                  {isSidebarOpen && <span>None Tier</span>}
+                </div>
+                {isSidebarOpen && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#FFFDE6]/15 text-[#FFFDE6]">
+                    {sales.filter((s) => s.tier?.toLowerCase() === "none" || !s.tier).length}
+                  </span>
+                )}
+              </button>
             </div>
 
-            {/* Model Dropdown + Add button (top right of panel) */}
-            <div className="flex flex-col items-end gap-1.5">
-              <span className="text-[11px] font-bold text-[#FFA4D2] tracking-wider uppercase">
-                Model
-              </span>
-              <div className="flex items-center gap-1.5">
-                <select
-                  id={modelSelectId}
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="bg-[#140918] border border-[#FFA4D2]/30 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#FFFDE6] focus:outline-none focus:border-[#FF77B9] focus:ring-2 focus:ring-[#FF77B9]/20 transition shadow-inner"
+            {/* Models Directory Section */}
+            {isSidebarOpen && (
+              <div className="flex flex-col gap-2 pt-2 border-t border-[#FFA4D2]/15">
+                <div className="flex items-center justify-between px-2.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 flex items-center gap-1.5">
+                    <Users size={12} />
+                    Models
+                  </span>
+                  <button
+                    type="button"
+                    title="Add new model"
+                    onClick={() => setIsAddingModel(true)}
+                    className="p-1 rounded-md bg-[#250f2c] hover:bg-[#34143d] text-[#FFA4D2] hover:text-[#FFFDE6] border border-[#FFA4D2]/25"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
+                  {models.map((m) => {
+                    const isModelActive = activeFilter === `model:${m.name}`;
+                    const count = modelCounts[m.name] || 0;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() =>
+                          setActiveFilter(isModelActive ? "all" : `model:${m.name}`)
+                        }
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          isModelActive
+                            ? "bg-[#E31B73]/25 text-[#FFFDE6] border border-[#E31B73]/40 font-bold"
+                            : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
+                        }`}
+                      >
+                        <span className="truncate">{m.name}</span>
+                        <span className="text-[10px] font-mono text-[#FFA4D2] opacity-80">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Actions in Sidebar */}
+            {isSidebarOpen && (
+              <div className="flex flex-col gap-2 pt-2 border-t border-[#FFA4D2]/15">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5">
+                  Quick Actions
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPurchaseText(SAMPLE_TEXT);
+                    setInlineParseError(null);
+                    showToast("success", "Sample message loaded into purchase text");
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[#230d2a] hover:bg-[#2f1238] border border-[#FFA4D2]/20 text-xs font-bold text-[#FFA4D2] transition text-left"
                 >
-                  {models.map((m) => (
-                    <option key={m.id} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                  <Sparkles size={14} className="text-[#FF77B9]" />
+                  <span>Load Sample Text</span>
+                </button>
 
                 <button
                   type="button"
-                  title="Add new model"
-                  onClick={() => setIsAddingModel(!isAddingModel)}
-                  className="h-7 w-7 rounded-lg bg-gradient-to-r from-[#E31B73] to-[#FF77B9] hover:brightness-110 text-[#FFFDE6] flex items-center justify-center transition shadow-md shadow-[#E31B73]/25"
+                  onClick={handleOpenSummary}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[#230d2a] hover:bg-[#2f1238] border border-[#FFA4D2]/20 text-xs font-bold text-[#FFFDE6] transition text-left"
                 >
-                  <Plus size={14} />
+                  <BarChart3 size={14} className="text-[#FF77B9]" />
+                  <span>View Full Summary</span>
                 </button>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Model Add Quick Input */}
-          {isAddingModel && (
-            <div className="p-3 bg-[#2a1032]/90 border border-[#FF77B9]/40 rounded-xl flex items-center gap-2 animate-fadeIn shadow-lg">
-              <input
-                type="text"
-                autoFocus
-                placeholder="New model name..."
-                value={newModelInput}
-                onChange={(e) => setNewModelInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddNewModel();
-                  if (e.key === "Escape") setIsAddingModel(false);
+            {/* Bottom Status Card */}
+            {isSidebarOpen && (
+              <div className="mt-auto p-3 bg-[#200e26] border border-[#FFA4D2]/20 rounded-2xl flex flex-col gap-1.5 text-[11px] shadow-inner">
+                <div className="flex items-center gap-2 font-bold text-[#FFFDE6]">
+                  <Database size={13} className="text-[#FF77B9]" />
+                  <span>Database Connected</span>
+                </div>
+                <p className="text-[10px] text-[#d9a0c2]">
+                  Postgres on Supabase with server-side service role key.
+                </p>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* ── MAIN CONTENT WORKSPACE ───────────────────────── */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-6">
+          
+          {/* Workspace Filter Status Banner (if filtered) */}
+          {(activeFilter !== "all" || searchQuery.trim()) && (
+            <div className="p-3 bg-[#230e29] border border-[#FFA4D2]/30 rounded-xl flex items-center justify-between gap-3 text-xs animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <Filter size={14} className="text-[#FF77B9]" />
+                <span>
+                  Filtering by:{" "}
+                  <strong className="text-[#FFFDE6] uppercase">
+                    {activeFilter.startsWith("model:")
+                      ? `Model: ${activeFilter.replace("model:", "")}`
+                      : activeFilter}
+                  </strong>
+                  {searchQuery && (
+                    <span> &amp; Search: &ldquo;{searchQuery}&rdquo;</span>
+                  )}
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E31B73]/20 text-[#FF77B9] font-bold">
+                  {filteredSales.length} matches
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveFilter("all");
+                  setSearchQuery("");
                 }}
-                className="flex-1 bg-[#140918] border border-[#FFA4D2]/30 rounded-lg px-3 py-1 text-xs text-[#FFFDE6] placeholder-[#d9a0c2]/60 focus:outline-none focus:border-[#FF77B9]"
-              />
-              <button
-                type="button"
-                onClick={handleAddNewModel}
-                className="px-3 py-1 bg-gradient-to-r from-[#E31B73] to-[#FF77B9] hover:brightness-110 rounded-lg text-xs font-bold text-[#FFFDE6] transition shadow-sm"
+                className="text-[#FFA4D2] hover:text-[#FFFDE6] text-xs font-bold underline"
               >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAddingModel(false)}
-                className="p-1 text-[#FFA4D2] hover:text-[#FFFDE6]"
-              >
-                <X size={14} />
+                Clear Filters
               </button>
             </div>
           )}
 
-          {/* Purchase Textarea */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor={textareaId}
-                className="text-xs font-bold text-[#FFFDE6]"
-              >
-                Purchase Text
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setPurchaseText(SAMPLE_TEXT);
-                  setInlineParseError(null);
-                }}
-                className="text-[11px] text-[#FFA4D2] hover:text-[#FFFDE6] flex items-center gap-1 font-semibold hover:underline"
-              >
-                <Sparkles size={11} className="text-[#FF77B9]" />
-                Insert Sample
-              </button>
-            </div>
+          {/* Dual-Panel Core Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* ═════════════════════════════════════════════════
+                LEFT PANEL: "Enter Purchase Details" (5 cols)
+                ═════════════════════════════════════════════════ */}
+            <section
+              aria-label="Enter Purchase Details"
+              className="lg:col-span-5 bg-[#200e26]/90 border border-[#FFA4D2]/20 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 relative overflow-hidden backdrop-blur-xl"
+            >
+              {/* Decorative pink glow from palette */}
+              <div className="absolute -top-12 -left-12 w-48 h-48 bg-[#E31B73]/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-12 -right-12 w-44 h-44 bg-[#FF77B9]/10 rounded-full blur-3xl pointer-events-none" />
 
-            <textarea
-              id={textareaId}
-              rows={5}
-              placeholder="Paste the purchase message here..."
-              value={purchaseText}
-              onChange={(e) => {
-                setPurchaseText(e.target.value);
-                if (inlineParseError) setInlineParseError(null);
-              }}
-              className={`w-full bg-[#120716] border rounded-xl p-3 text-xs font-mono text-[#FFFDE6] placeholder-[#d9a0c2]/50 focus:outline-none focus:ring-2 transition resize-y ${
-                inlineParseError
-                  ? "border-[#E31B73] focus:ring-[#E31B73]/30"
-                  : "border-[#FFA4D2]/25 focus:border-[#FF77B9] focus:ring-[#FF77B9]/25"
-              }`}
-            />
+              {/* Panel Header & Model Dropdown */}
+              <div className="flex items-start justify-between gap-3 pb-1 border-b border-[#FFA4D2]/15">
+                <div>
+                  <h2 className="text-base font-bold text-[#FFFDE6] tracking-tight">
+                    Enter Purchase Details
+                  </h2>
+                  <p className="text-xs text-[#d9a0c2]">
+                    Paste raw purchase message to parse &amp; save
+                  </p>
+                </div>
 
-            {/* Inline Error Message near textarea as mandated by spec */}
-            {inlineParseError && (
-              <div className="flex items-center gap-1.5 text-xs text-[#FFA4D2] font-semibold bg-[#2a091a]/80 border border-[#E31B73]/60 px-3 py-2 rounded-lg mt-1 shadow-sm">
-                <AlertCircle size={14} className="shrink-0 text-[#E31B73]" />
-                <span>{inlineParseError}</span>
+                {/* Model Dropdown + Add button (top right of panel) */}
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className="text-[11px] font-bold text-[#FFA4D2] tracking-wider uppercase">
+                    Model
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      id={modelSelectId}
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="bg-[#140918] border border-[#FFA4D2]/30 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#FFFDE6] focus:outline-none focus:border-[#FF77B9] focus:ring-2 focus:ring-[#FF77B9]/20 transition shadow-inner"
+                    >
+                      {models.map((m) => (
+                        <option key={m.id} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      title="Add new model"
+                      onClick={() => setIsAddingModel(!isAddingModel)}
+                      className="h-7 w-7 rounded-lg bg-gradient-to-r from-[#E31B73] to-[#FF77B9] hover:brightness-110 text-[#FFFDE6] flex items-center justify-center transition shadow-md shadow-[#E31B73]/25"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Tier Radio Buttons: Free, VIP, None. Default: None */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-[#FFFDE6]">Tier</span>
-            <div className="grid grid-cols-3 gap-2">
-              {(["none", "free", "vip"] as Tier[]).map((t) => {
-                const isChecked = tier === t;
-                const label = t === "none" ? "None" : t === "free" ? "Free" : "VIP";
-                return (
-                  <label
-                    key={t}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition select-none ${
-                      isChecked
-                        ? t === "vip"
-                          ? "bg-[#E31B73]/25 border-[#E31B73] text-[#FFFDE6] shadow-md shadow-[#E31B73]/30"
-                          : t === "free"
-                          ? "bg-[#FF77B9]/25 border-[#FF77B9] text-[#FFA4D2] shadow-md shadow-[#FF77B9]/25"
-                          : "bg-[#FFFDE6]/15 border-[#FFFDE6] text-[#FFFDE6] shadow-md shadow-[#FFFDE6]/20"
-                        : "bg-[#160a1a]/70 border-[#FFA4D2]/20 text-[#d9a0c2] hover:border-[#FFA4D2]/40 hover:text-[#FFFDE6]"
-                    }`}
+              {/* Model Add Quick Input */}
+              {isAddingModel && (
+                <div className="p-3 bg-[#2a1032]/90 border border-[#FF77B9]/40 rounded-xl flex items-center gap-2 animate-fadeIn shadow-lg">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="New model name..."
+                    value={newModelInput}
+                    onChange={(e) => setNewModelInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddNewModel();
+                      if (e.key === "Escape") setIsAddingModel(false);
+                    }}
+                    className="flex-1 bg-[#140918] border border-[#FFA4D2]/30 rounded-lg px-3 py-1 text-xs text-[#FFFDE6] placeholder-[#d9a0c2]/60 focus:outline-none focus:border-[#FF77B9]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewModel}
+                    className="px-3 py-1 bg-gradient-to-r from-[#E31B73] to-[#FF77B9] hover:brightness-110 rounded-lg text-xs font-bold text-[#FFFDE6] transition shadow-sm"
                   >
-                    <input
-                      type="radio"
-                      name="tier-selection"
-                      value={t}
-                      checked={isChecked}
-                      onChange={() => setTier(t)}
-                      className="sr-only"
-                    />
-                    {t === "vip" && <Crown size={13} className="text-[#FF77B9]" />}
-                    {t === "free" && <Gift size={13} className="text-[#FFA4D2]" />}
-                    {t === "none" && <CircleDot size={13} className="text-[#FFFDE6]" />}
-                    <span>{label}</span>
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingModel(false)}
+                    className="p-1 text-[#FFA4D2] hover:text-[#FFFDE6]"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
+              {/* Purchase Textarea */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor={textareaId}
+                    className="text-xs font-bold text-[#FFFDE6]"
+                  >
+                    Purchase Text
                   </label>
-                );
-              })}
-            </div>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurchaseText(SAMPLE_TEXT);
+                      setInlineParseError(null);
+                    }}
+                    className="text-[11px] text-[#FFA4D2] hover:text-[#FFFDE6] flex items-center gap-1 font-semibold hover:underline"
+                  >
+                    <Sparkles size={11} className="text-[#FF77B9]" />
+                    Insert Sample
+                  </button>
+                </div>
 
-          {/* Process & Save Button (full width, primary color: vibrant hot pink gradient) */}
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={handleProcessAndSave}
-            className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-[#E31B73] via-[#FF77B9] to-[#E31B73] hover:brightness-110 text-[#FFFDE6] font-extrabold text-sm shadow-xl shadow-[#E31B73]/40 flex items-center justify-center gap-2 transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Processing &amp; Saving...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={16} />
-                <span>Process &amp; Save</span>
-              </>
-            )}
-          </button>
+                <textarea
+                  id={textareaId}
+                  rows={5}
+                  placeholder="Paste the purchase message here..."
+                  value={purchaseText}
+                  onChange={(e) => {
+                    setPurchaseText(e.target.value);
+                    if (inlineParseError) setInlineParseError(null);
+                  }}
+                  className={`w-full bg-[#120716] border rounded-xl p-3 text-xs font-mono text-[#FFFDE6] placeholder-[#d9a0c2]/50 focus:outline-none focus:ring-2 transition resize-y ${
+                    inlineParseError
+                      ? "border-[#E31B73] focus:ring-[#E31B73]/30"
+                      : "border-[#FFA4D2]/25 focus:border-[#FF77B9] focus:ring-[#FF77B9]/25"
+                  }`}
+                />
 
-          {/* Spec notes card */}
-          <div className="mt-1 p-3 bg-[#150819]/80 border border-[#FFA4D2]/15 rounded-xl text-[11px] text-[#d9a0c2] flex flex-col gap-0.5">
-            <span className="font-bold text-[#FFFDE6]">Format Guide:</span>
-            <span>🐳(Name)</span>
-            <span>@username</span>
-            <span>... date MM/DD/YY</span>
-            <span>has purchased your [type] for $[amount]!</span>
-          </div>
-        </section>
-
-        {/* ═════════════════════════════════════════════════════
-            RIGHT PANEL: "All Purchases" (7 cols on lg)
-            ═════════════════════════════════════════════════════ */}
-        <section
-          aria-label="All Purchases"
-          className="lg:col-span-7 bg-[#200e26]/90 border border-[#FFA4D2]/20 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 backdrop-blur-xl"
-        >
-          {/* Header Row with Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#FFA4D2]/15">
-            <div>
-              <h2 className="text-base font-bold text-[#FFFDE6] tracking-tight flex items-center gap-2">
-                All Purchases
-                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-[#E31B73]/25 text-[#FF77B9] border border-[#E31B73]/40">
-                  {sales.length}
-                </span>
-              </h2>
-              <p className="text-xs text-[#d9a0c2]">
-                Live purchase feed with running totals &amp; exports
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* View Summary button */}
-              <button
-                type="button"
-                onClick={handleOpenSummary}
-                className="px-3.5 py-1.5 rounded-lg bg-[#FFA4D2]/15 hover:bg-[#FFA4D2]/25 border border-[#FFA4D2]/40 text-[#FFFDE6] font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
-              >
-                <BarChart3 size={14} className="text-[#FF77B9]" />
-                <span>View Summary</span>
-              </button>
-
-              {/* Save button (top right, green) — exports current table to .xlsx */}
-              <button
-                type="button"
-                onClick={handleExportExcel}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-600/20"
-              >
-                <Download size={14} />
-                <span>Save (.xlsx)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Purchases Table */}
-          {/* Columns in order: ID, Name / Username, Amount, Sale Type, Model, Tier, Date, Actions */}
-          <div className="overflow-x-auto rounded-xl border border-[#FFA4D2]/20 bg-[#120716]/90">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-[#FFA4D2]/20 bg-[#1a0b20] text-[#FFA4D2] uppercase tracking-wider text-[10px] font-extrabold">
-                  <th className="py-3 px-3">ID</th>
-                  <th className="py-3 px-3">Name / Username</th>
-                  <th className="py-3 px-3 text-right">Amount</th>
-                  <th className="py-3 px-3">Sale Type</th>
-                  <th className="py-3 px-3">Model</th>
-                  <th className="py-3 px-3 text-center">Tier</th>
-                  <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#FFA4D2]/15">
-                {sales.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="py-12 text-center text-[#d9a0c2] text-xs"
-                    >
-                      No purchase records found. Paste purchase text on the left to add one.
-                    </td>
-                  </tr>
-                ) : (
-                  sales.map((sale) => (
-                    <tr
-                      key={sale.id}
-                      className="hover:bg-[#FF77B9]/[0.08] transition group"
-                    >
-                      {/* ID — auto-incrementing integer, shown as-is (e.g. 5555), newest first */}
-                      <td className="py-3 px-3 font-mono font-bold text-[#FFA4D2]">
-                        #{sale.id}
-                      </td>
-
-                      {/* Name / Username — stacked in one cell, e.g. Kody / @u80636081 */}
-                      <td className="py-3 px-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-[#FFFDE6] text-xs">
-                            {sale.name}
-                          </span>
-                          <span className="font-mono text-[11px] text-[#FFA4D2]">
-                            {sale.username || "—"}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Amount — formatted as currency, e.g. $30.99 */}
-                      <td className="py-3 px-3 text-right font-extrabold text-[#FFFDE6] font-mono text-xs">
-                        {formatCurrency(Number(sale.amount))}
-                      </td>
-
-                      {/* Sale Type */}
-                      <td className="py-3 px-3">
-                        <span className="capitalize px-2 py-0.5 rounded-md bg-[#E31B73]/20 text-[#FFA4D2] border border-[#E31B73]/30 font-semibold text-[11px]">
-                          {sale.sale_type || "message"}
-                        </span>
-                      </td>
-
-                      {/* Model */}
-                      <td className="py-3 px-3">
-                        <span className="font-bold text-[#FF77B9]">
-                          {sale.model || "—"}
-                        </span>
-                      </td>
-
-                      {/* Tier — shown as small pill/badge (NONE, FREE, VIP) */}
-                      <td className="py-3 px-3 text-center">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${getTierBadgeClass(
-                            sale.tier
-                          )}`}
-                        >
-                          {(sale.tier || "none").toUpperCase()}
-                        </span>
-                      </td>
-
-                      {/* Date */}
-                      <td className="py-3 px-3 text-[#d9a0c2] text-[11px]">
-                        {formatDate(sale.date)}
-                      </td>
-
-                      {/* Actions: Edit (blue/pink) and Delete (red/magenta) buttons per row */}
-                      <td className="py-3 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Edit button */}
-                          <button
-                            type="button"
-                            title="Edit row"
-                            onClick={() => handleOpenEdit(sale)}
-                            className="p-1.5 rounded-lg bg-[#FFA4D2]/15 hover:bg-[#FFA4D2] text-[#FFA4D2] hover:text-[#120815] border border-[#FFA4D2]/35 transition shadow-sm"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          {/* Delete button */}
-                          <button
-                            type="button"
-                            title="Delete row"
-                            onClick={() => setDeletingSale(sale)}
-                            className="p-1.5 rounded-lg bg-[#E31B73]/15 hover:bg-[#E31B73] text-[#FF77B9] hover:text-[#FFFDE6] border border-[#E31B73]/40 transition shadow-sm"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                {/* Inline Error Message near textarea as mandated by spec */}
+                {inlineParseError && (
+                  <div className="flex items-center gap-1.5 text-xs text-[#FFA4D2] font-semibold bg-[#2a091a]/80 border border-[#E31B73]/60 px-3 py-2 rounded-lg mt-1 shadow-sm">
+                    <AlertCircle size={14} className="shrink-0 text-[#E31B73]" />
+                    <span>{inlineParseError}</span>
+                  </div>
                 )}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Tier Radio Buttons: Free, VIP, None. Default: None */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-[#FFFDE6]">Tier</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["none", "free", "vip"] as Tier[]).map((t) => {
+                    const isChecked = tier === t;
+                    const label = t === "none" ? "None" : t === "free" ? "Free" : "VIP";
+                    return (
+                      <label
+                        key={t}
+                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition select-none ${
+                          isChecked
+                            ? t === "vip"
+                              ? "bg-[#E31B73]/25 border-[#E31B73] text-[#FFFDE6] shadow-md shadow-[#E31B73]/30"
+                              : t === "free"
+                              ? "bg-[#FF77B9]/25 border-[#FF77B9] text-[#FFA4D2] shadow-md shadow-[#FF77B9]/25"
+                              : "bg-[#FFFDE6]/15 border-[#FFFDE6] text-[#FFFDE6] shadow-md shadow-[#FFFDE6]/20"
+                            : "bg-[#160a1a]/70 border-[#FFA4D2]/20 text-[#d9a0c2] hover:border-[#FFA4D2]/40 hover:text-[#FFFDE6]"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="tier-selection"
+                          value={t}
+                          checked={isChecked}
+                          onChange={() => setTier(t)}
+                          className="sr-only"
+                        />
+                        {t === "vip" && <Crown size={13} className="text-[#FF77B9]" />}
+                        {t === "free" && <Gift size={13} className="text-[#FFA4D2]" />}
+                        {t === "none" && <CircleDot size={13} className="text-[#FFFDE6]" />}
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Process & Save Button (full width, primary color: vibrant hot pink gradient) */}
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleProcessAndSave}
+                className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-[#E31B73] via-[#FF77B9] to-[#E31B73] hover:brightness-110 text-[#FFFDE6] font-extrabold text-sm shadow-xl shadow-[#E31B73]/40 flex items-center justify-center gap-2 transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Processing &amp; Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>Process &amp; Save</span>
+                  </>
+                )}
+              </button>
+
+              {/* Spec notes card */}
+              <div className="mt-1 p-3 bg-[#150819]/80 border border-[#FFA4D2]/15 rounded-xl text-[11px] text-[#d9a0c2] flex flex-col gap-0.5">
+                <span className="font-bold text-[#FFFDE6]">Format Guide:</span>
+                <span>🐳(Name)</span>
+                <span>@username</span>
+                <span>... date MM/DD/YY</span>
+                <span>has purchased your [type] for $[amount]!</span>
+              </div>
+            </section>
+
+            {/* ═════════════════════════════════════════════════
+                RIGHT PANEL: "All Purchases" (7 cols)
+                ═════════════════════════════════════════════════ */}
+            <section
+              aria-label="All Purchases"
+              className="lg:col-span-7 bg-[#200e26]/90 border border-[#FFA4D2]/20 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 backdrop-blur-xl"
+            >
+              {/* Header Row with Action Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#FFA4D2]/15">
+                <div>
+                  <h2 className="text-base font-bold text-[#FFFDE6] tracking-tight flex items-center gap-2">
+                    All Purchases
+                    <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-[#E31B73]/25 text-[#FF77B9] border border-[#E31B73]/40">
+                      {filteredSales.length}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#d9a0c2]">
+                    Live purchase feed with running totals &amp; exports
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Search input in table header */}
+                  <div className="relative">
+                    <Search
+                      size={13}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#FFA4D2]/60"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search name, user, ID..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-[#140918] border border-[#FFA4D2]/30 rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#FFFDE6] placeholder-[#d9a0c2]/50 focus:outline-none focus:border-[#FF77B9] w-36 sm:w-48"
+                    />
+                  </div>
+
+                  {/* View Summary button */}
+                  <button
+                    type="button"
+                    onClick={handleOpenSummary}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#FFA4D2]/15 hover:bg-[#FFA4D2]/25 border border-[#FFA4D2]/40 text-[#FFFDE6] font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <BarChart3 size={14} className="text-[#FF77B9]" />
+                    <span className="hidden sm:inline">Summary</span>
+                  </button>
+
+                  {/* Save button (top right, green) — exports current table to .xlsx */}
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-600/20"
+                  >
+                    <Download size={14} />
+                    <span>Save (.xlsx)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Purchases Table */}
+              {/* Columns in order: ID, Name / Username, Amount, Sale Type, Model, Tier, Date, Actions */}
+              <div className="overflow-x-auto rounded-xl border border-[#FFA4D2]/20 bg-[#120716]/90">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#FFA4D2]/20 bg-[#1a0b20] text-[#FFA4D2] uppercase tracking-wider text-[10px] font-extrabold">
+                      <th className="py-3 px-3">ID</th>
+                      <th className="py-3 px-3">Name / Username</th>
+                      <th className="py-3 px-3 text-right">Amount</th>
+                      <th className="py-3 px-3">Sale Type</th>
+                      <th className="py-3 px-3">Model</th>
+                      <th className="py-3 px-3 text-center">Tier</th>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#FFA4D2]/15">
+                    {filteredSales.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="py-12 text-center text-[#d9a0c2] text-xs"
+                        >
+                          No purchase records match your query. Paste purchase text on the left to add one.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSales.map((sale) => (
+                        <tr
+                          key={sale.id}
+                          className="hover:bg-[#FF77B9]/[0.08] transition group"
+                        >
+                          {/* ID — auto-incrementing integer, shown as-is (e.g. 5555), newest first */}
+                          <td className="py-3 px-3 font-mono font-bold text-[#FFA4D2]">
+                            #{sale.id}
+                          </td>
+
+                          {/* Name / Username — stacked in one cell, e.g. Kody / @u80636081 */}
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-[#FFFDE6] text-xs">
+                                {sale.name}
+                              </span>
+                              <span className="font-mono text-[11px] text-[#FFA4D2]">
+                                {sale.username || "—"}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Amount — formatted as currency, e.g. $30.99 */}
+                          <td className="py-3 px-3 text-right font-extrabold text-[#FFFDE6] font-mono text-xs">
+                            {formatCurrency(Number(sale.amount))}
+                          </td>
+
+                          {/* Sale Type */}
+                          <td className="py-3 px-3">
+                            <span className="capitalize px-2 py-0.5 rounded-md bg-[#E31B73]/20 text-[#FFA4D2] border border-[#E31B73]/30 font-semibold text-[11px]">
+                              {sale.sale_type || "message"}
+                            </span>
+                          </td>
+
+                          {/* Model */}
+                          <td className="py-3 px-3">
+                            <span className="font-bold text-[#FF77B9]">
+                              {sale.model || "—"}
+                            </span>
+                          </td>
+
+                          {/* Tier — shown as small pill/badge (NONE, FREE, VIP) */}
+                          <td className="py-3 px-3 text-center">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${getTierBadgeClass(
+                                sale.tier
+                              )}`}
+                            >
+                              {(sale.tier || "none").toUpperCase()}
+                            </span>
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-3 px-3 text-[#d9a0c2] text-[11px]">
+                            {formatDate(sale.date)}
+                          </td>
+
+                          {/* Actions: Edit (pink) and Delete (magenta) buttons per row */}
+                          <td className="py-3 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Edit button */}
+                              <button
+                                type="button"
+                                title="Edit row"
+                                onClick={() => handleOpenEdit(sale)}
+                                className="p-1.5 rounded-lg bg-[#FFA4D2]/15 hover:bg-[#FFA4D2] text-[#FFA4D2] hover:text-[#120815] border border-[#FFA4D2]/35 transition shadow-sm"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              {/* Delete button */}
+                              <button
+                                type="button"
+                                title="Delete row"
+                                onClick={() => setDeletingSale(sale)}
+                                className="p-1.5 rounded-lg bg-[#E31B73]/15 hover:bg-[#E31B73] text-[#FF77B9] hover:text-[#FFFDE6] border border-[#E31B73]/40 transition shadow-sm"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Footer row below the table: Total: $X plus per-tier subtotals (VIP: $X, FREE: $X, NONE: $X) */}
+              {/* Computed client-side from whatever rows are currently loaded — no API call */}
+              <div className="p-3.5 bg-[#17091c]/95 border border-[#FFA4D2]/25 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[#FFA4D2] uppercase tracking-wider text-[11px]">
+                    Total:
+                  </span>
+                  <span className="font-black text-sm text-[#FFFDE6] font-mono">
+                    {formatCurrency(totalAmount)}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs font-bold">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#E31B73]" />
+                    <span className="text-[#FF77B9] font-bold">VIP:</span>
+                    <span className="text-[#FFFDE6] font-mono">
+                      {formatCurrency(vipAmount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#FFA4D2]" />
+                    <span className="text-[#FFA4D2] font-bold">FREE:</span>
+                    <span className="text-[#FFFDE6] font-mono">
+                      {formatCurrency(freeAmount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#FFFDE6]" />
+                    <span className="text-[#d9a0c2] font-bold">NONE:</span>
+                    <span className="text-[#FFFDE6] font-mono">
+                      {formatCurrency(noneAmount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
-
-          {/* Footer row below the table: Total: $X plus per-tier subtotals (VIP: $X, FREE: $X, NONE: $X) */}
-          {/* Computed client-side from whatever rows are currently loaded — no API call */}
-          <div className="p-3.5 bg-[#17091c]/95 border border-[#FFA4D2]/25 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-[#FFA4D2] uppercase tracking-wider text-[11px]">
-                Total:
-              </span>
-              <span className="font-black text-sm text-[#FFFDE6] font-mono">
-                {formatCurrency(totalAmount)}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 text-xs font-bold">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#E31B73]" />
-                <span className="text-[#FF77B9] font-bold">VIP:</span>
-                <span className="text-[#FFFDE6] font-mono">
-                  {formatCurrency(vipAmount)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#FFA4D2]" />
-                <span className="text-[#FFA4D2] font-bold">FREE:</span>
-                <span className="text-[#FFFDE6] font-mono">
-                  {formatCurrency(freeAmount)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#FFFDE6]" />
-                <span className="text-[#d9a0c2] font-bold">NONE:</span>
-                <span className="text-[#FFFDE6] font-mono">
-                  {formatCurrency(noneAmount)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
+        </main>
+      </div>
 
       {/* ═════════════════════════════════════════════════════
           EDIT MODAL
