@@ -866,150 +866,163 @@ export default function InvoiceGeneratorPage() {
             {/* ═══════════════════════════════════════════════════
                 IMAGE 2: OUTPUT / CLEAN PREVIEW / PRINTABLE SHEET
                 ═══════════════════════════════════════════════════ */}
+            {/* ═══════════════════════════════════════════════════
+                EXACT 1:1 OUTPUT DOCUMENT (MATCHES PDF EXACTLY)
+                ═══════════════════════════════════════════════════ */}
             {(viewMode === "preview" || viewMode === "split") && (
-              <div className="invoice-printable-sheet w-full max-w-3xl bg-white text-[#111827] rounded-xl shadow-2xl p-8 md:p-12 border border-gray-200 flex flex-col gap-6 font-sans">
-                
-                {/* Header: Sender (Left) & INVOICE (Right) */}
-                <div className="flex items-start justify-between gap-6">
-                  {/* Sender Name & Address */}
-                  <div className="flex flex-col">
-                    {logoUrl && (
-                      <div className="mb-3 max-w-[140px] max-h-[70px]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={logoUrl}
-                          alt="Company Logo"
-                          className="max-h-full object-contain"
-                        />
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-800 whitespace-pre-line leading-relaxed font-normal">
-                      {fromDetails}
+              <div className="invoice-printable-sheet w-full max-w-[800px] min-h-[1050px] bg-white text-[#111827] rounded-lg shadow-2xl p-10 md:p-14 border border-gray-200 flex flex-col justify-between font-sans leading-relaxed">
+                <div className="flex flex-col">
+                  {/* Top Section: Sender (Left) & INVOICE Title (Right) */}
+                  <div className="flex items-start justify-between gap-8">
+                    {/* Sender Details */}
+                    <div className="flex flex-col text-xs leading-[1.5] max-w-xs">
+                      {logoUrl && (
+                        <div className="mb-3 max-w-[150px] max-h-[70px]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={logoUrl}
+                            alt="Company Logo"
+                            className="max-h-full object-contain"
+                          />
+                        </div>
+                      )}
+                      <span className="font-bold text-gray-900 block text-xs">
+                        {fromDetails.split("\n")[0]}
+                      </span>
+                      <span className="text-gray-700 whitespace-pre-line block text-xs">
+                        {fromDetails.split("\n").slice(1).join("\n")}
+                      </span>
+                    </div>
+
+                    {/* INVOICE Title & # */}
+                    <div className="flex flex-col items-end">
+                      <h2 className="text-[42px] font-normal tracking-[0.05em] text-gray-800 leading-none">
+                        INVOICE
+                      </h2>
+                      <span className="text-sm text-gray-600 mt-2 font-normal">
+                        # {invoiceNumber}
+                      </span>
                     </div>
                   </div>
 
-                  {/* INVOICE Title & # */}
-                  <div className="flex flex-col items-end">
-                    <h2 className="text-4xl md:text-5xl font-normal tracking-wide text-gray-800">
-                      INVOICE
-                    </h2>
-                    <span className="text-xs text-gray-600 mt-1 font-medium">
-                      # {invoiceNumber}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sub-Header: Date & Balance Due Banner on right, Bill To on left */}
-                <div className="flex flex-col gap-3 pt-2">
-                  {/* Date on Right */}
-                  <div className="flex justify-end text-xs text-gray-600 font-normal">
-                    <span>Date:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{invoiceDate}</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                    {/* Bill To on Left */}
-                    <div className="sm:col-span-6 flex flex-col text-xs leading-relaxed text-gray-800">
-                      <span className="text-gray-500 font-medium mb-0.5">Bill To:</span>
-                      <div className="whitespace-pre-line">
-                        {billTo}
-                      </div>
+                  {/* Sub-Header: Date & Balance Due on Right, Bill To on Left */}
+                  <div className="mt-8 flex flex-col gap-2">
+                    {/* Date row (aligned right above banner) */}
+                    <div className="flex justify-end text-xs text-gray-600 font-normal">
+                      <span className="text-gray-500 mr-8">Date:</span>
+                      <span className="text-gray-900 font-normal">{invoiceDate}</span>
                     </div>
 
-                    {/* Balance Due Banner on Right */}
-                    <div className="sm:col-span-6 flex justify-end">
-                      <div className="w-full max-w-sm bg-gray-100 rounded-md py-2.5 px-4 flex items-center justify-between text-xs">
-                        <span className="font-bold text-gray-700">Balance Due:</span>
-                        <span className="font-bold text-gray-900 text-sm">
-                          {formatCurrency(balanceDue)}
+                    {/* Bill To (Left) and Balance Due Banner (Right) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                      <div className="sm:col-span-6 flex flex-col text-xs leading-[1.5]">
+                        <span className="text-gray-500 font-normal mb-0.5">Bill To:</span>
+                        <span className="font-bold text-gray-900 block text-xs">
+                          {billTo.split("\n")[0]}
+                        </span>
+                        <span className="text-gray-700 whitespace-pre-line block text-xs">
+                          {billTo.split("\n").slice(1).join("\n")}
                         </span>
                       </div>
+
+                      <div className="sm:col-span-6 flex justify-end">
+                        <div className="w-full sm:w-[320px] bg-[#f2f4f7] rounded py-2 px-4 flex items-center justify-between text-xs">
+                          <span className="font-bold text-gray-800">Balance Due:</span>
+                          <span className="font-bold text-gray-900 text-sm">
+                            {formatCurrency(balanceDue)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Table (Matches Image 2) */}
-                <div className="pt-4">
-                  <div className="overflow-hidden">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-[#2d3748] text-white text-xs font-semibold">
-                          <th className="py-2.5 px-3">Item</th>
-                          <th className="py-2.5 px-3 text-center w-24">Quantity</th>
-                          <th className="py-2.5 px-3 text-right w-24">Rate</th>
-                          <th className="py-2.5 px-3 text-right w-28">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 text-xs">
-                        {items.map((item) => {
-                          const itemAmount = (Number(item.quantity) || 0) * (Number(item.rate) || 0);
-                          return (
-                            <tr key={item.id}>
-                              <td className="py-3 px-3 font-semibold text-gray-900 leading-snug">
-                                {item.description}
-                              </td>
-                              <td className="py-3 px-3 text-center text-gray-800 font-normal">
-                                {item.quantity}
-                              </td>
-                              <td className="py-3 px-3 text-right text-gray-800 font-normal">
-                                {formatCurrency(item.rate)}
-                              </td>
-                              <td className="py-3 px-3 text-right text-gray-900 font-normal">
-                                {formatCurrency(itemAmount)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  {/* Line Items Table */}
+                  <div className="mt-7">
+                    <div className="overflow-hidden">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-[#374151] text-white text-xs font-semibold">
+                            <th className="py-2.5 px-3 font-semibold">Item</th>
+                            <th className="py-2.5 px-3 text-center w-20 font-semibold">Quantity</th>
+                            <th className="py-2.5 px-3 text-right w-24 font-semibold">Rate</th>
+                            <th className="py-2.5 px-3 text-right w-24 font-semibold">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 text-xs">
+                          {items.map((item) => {
+                            const itemAmount = (Number(item.quantity) || 0) * (Number(item.rate) || 0);
+                            return (
+                              <tr key={item.id}>
+                                <td className="py-3.5 px-3 font-bold text-gray-900 leading-snug max-w-[360px]">
+                                  {item.description}
+                                </td>
+                                <td className="py-3.5 px-3 text-center text-gray-800 font-normal">
+                                  {item.quantity}
+                                </td>
+                                <td className="py-3.5 px-3 text-right text-gray-800 font-normal">
+                                  {formatCurrency(item.rate)}
+                                </td>
+                                <td className="py-3.5 px-3 text-right text-gray-900 font-normal">
+                                  {formatCurrency(itemAmount)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
 
-                {/* Subtotals & Taxes (Right side) */}
-                <div className="flex justify-end pt-2 text-xs">
-                  <div className="w-64 flex flex-col gap-2">
-                    <div className="flex justify-between text-gray-600">
-                      <span>Subtotal:</span>
-                      <span className="font-medium text-gray-800">{formatCurrency(subtotal)}</span>
+                  {/* Subtotal, Tax, Total Block on Right */}
+                  <div className="flex justify-end mt-7 text-xs">
+                    <div className="w-56 flex flex-col gap-2 text-xs">
+                      <div className="flex justify-between text-gray-500">
+                        <span>Subtotal:</span>
+                        <span className="text-gray-900 font-normal">{formatCurrency(subtotal)}</span>
+                      </div>
+
+                      <div className="flex justify-between text-gray-500">
+                        <span>Tax ({taxRate}%):</span>
+                        <span className="text-gray-900 font-normal">{formatCurrency(taxAmount)}</span>
+                      </div>
+
+                      {showDiscount && discountAmount > 0 && (
+                        <div className="flex justify-between text-emerald-600">
+                          <span>Discount:</span>
+                          <span>-{formatCurrency(discountAmount)}</span>
+                        </div>
+                      )}
+
+                      {showShipping && shippingAmount > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Shipping:</span>
+                          <span>+{formatCurrency(shippingAmount)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between text-gray-500 pt-1">
+                        <span>Total:</span>
+                        <span className="text-gray-900 font-normal">{formatCurrency(total)}</span>
+                      </div>
                     </div>
+                  </div>
 
-                    <div className="flex justify-between text-gray-600">
-                      <span>Tax ({taxRate}%):</span>
-                      <span className="font-medium text-gray-800">{formatCurrency(taxAmount)}</span>
+                  {/* Notes Section (Matches PDF exactly) */}
+                  <div className="mt-10 text-xs text-gray-800">
+                    <div className="text-gray-600 font-normal mb-1">
+                      Notes:
                     </div>
-
-                    {showDiscount && discountAmount > 0 && (
-                      <div className="flex justify-between text-emerald-600">
-                        <span>Discount:</span>
-                        <span>-{formatCurrency(discountAmount)}</span>
+                    <div className="whitespace-pre-line leading-[1.65] font-normal text-gray-800">
+                      {notes.replace(/^Notes:\s*/i, "")}
+                    </div>
+                    {terms && (
+                      <div className="mt-4 pt-3 border-t border-gray-200 whitespace-pre-line leading-relaxed text-gray-600">
+                        <strong className="text-gray-800 font-medium">Terms:</strong>
+                        <br />
+                        {terms}
                       </div>
                     )}
-
-                    {showShipping && shippingAmount > 0 && (
-                      <div className="flex justify-between text-gray-600">
-                        <span>Shipping:</span>
-                        <span>+{formatCurrency(shippingAmount)}</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between text-gray-900 font-medium pt-1">
-                      <span>Total:</span>
-                      <span className="font-medium">{formatCurrency(total)}</span>
-                    </div>
                   </div>
-                </div>
-
-                {/* Notes (Matches Image 2 bottom section) */}
-                <div className="pt-8 text-xs text-gray-800">
-                  <div className="whitespace-pre-line leading-relaxed font-normal">
-                    {notes}
-                  </div>
-                  {terms && (
-                    <div className="mt-4 pt-3 border-t border-gray-200 whitespace-pre-line leading-relaxed text-gray-600">
-                      <strong className="text-gray-800">Terms:</strong>
-                      <br />
-                      {terms}
-                    </div>
-                  )}
                 </div>
               </div>
             )}
