@@ -1434,11 +1434,11 @@ export default function SalesTrackerPage() {
                   </div>
 
                   <div className="p-3 bg-[#240e29] border border-[#FFA4D2]/20 rounded-xl flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-[#FFA4D2]">
-                      Total Sales
+                    <span className="text-[10px] uppercase font-bold text-[#FFFDE6]">
+                      None Revenue
                     </span>
                     <span className="text-lg font-black text-[#FFFDE6] font-mono">
-                      {summaryData.sales_count}
+                      {formatCurrency(summaryData.none_subtotal)}
                     </span>
                   </div>
 
@@ -1458,51 +1458,6 @@ export default function SalesTrackerPage() {
                     <span className="text-lg font-black text-[#FFA4D2] font-mono">
                       {formatCurrency(summaryData.free_subtotal)}
                     </span>
-                  </div>
-                </div>
-
-                {/* Top Buyer & Date Range */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3.5 bg-gradient-to-r from-[#E31B73]/20 to-[#FFA4D2]/10 border border-[#E31B73]/40 rounded-xl flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-[#E31B73]/25 border border-[#E31B73]/40 flex items-center justify-center text-[#FFFDE6]">
-                      <Crown size={20} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#FFA4D2] block">
-                        Top Buyer by Spend
-                      </span>
-                      {summaryData.top_buyer ? (
-                        <div>
-                          <span className="font-bold text-[#FFFDE6] text-xs block">
-                            {summaryData.top_buyer.name} ({summaryData.top_buyer.username})
-                          </span>
-                          <span className="text-[#FF77B9] font-mono font-bold text-xs">
-                            {formatCurrency(summaryData.top_buyer.total_spend)} (
-                            {summaryData.top_buyer.count} purchases)
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[#d9a0c2]">No buyer data</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 bg-[#240e29] border border-[#FFA4D2]/20 rounded-xl flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-[#17091c] border border-[#FFA4D2]/30 flex items-center justify-center text-[#FFA4D2]">
-                      <Calendar size={20} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#FFA4D2] block">
-                        Date Range Covered
-                      </span>
-                      <span className="font-bold text-[#FFFDE6] text-xs">
-                        {summaryData.date_range.min_date
-                          ? `${formatDate(summaryData.date_range.min_date)} — ${formatDate(
-                              summaryData.date_range.max_date || ""
-                            )}`
-                          : "No records yet"}
-                      </span>
-                    </div>
                   </div>
                 </div>
 
