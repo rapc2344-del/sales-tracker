@@ -24,10 +24,13 @@ import {
   Filter,
   Users,
   ChevronRight,
-  ShieldCheck,
   TrendingUp,
+  FolderClock,
+  FileSpreadsheet,
+  LayoutDashboard,
 } from "lucide-react";
-import type { Model, Sale, Tier, SummaryData, ParsedPurchase } from "@/lib/types";
+import Link from "next/link";
+import type { Model, Sale, Tier, SummaryData, ParsedPurchase, SavedSummary } from "@/lib/types";
 import { parsePurchaseText } from "@/lib/parser";
 
 // ── Confirmed Sample Format ──────────────────────────────────────────
@@ -128,6 +131,9 @@ export default function SalesTrackerPage() {
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState<boolean>(false);
 
+  // Saved Summaries Data State (for sidebar count badge)
+  const [savedSummaries, setSavedSummaries] = useState<SavedSummary[]>([]);
+
   // Toast auto-dismiss
   const showToast = useCallback((type: "success" | "error", message: string) => {
     setToast({ type, message });
@@ -162,10 +168,23 @@ export default function SalesTrackerPage() {
     }
   }, []);
 
+  const fetchSavedSummaries = useCallback(async () => {
+    try {
+      const res = await fetch("/api/saved-summaries");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setSavedSummaries(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchModels();
     fetchSales();
-  }, [fetchModels, fetchSales]);
+    fetchSavedSummaries();
+  }, [fetchModels, fetchSales, fetchSavedSummaries]);
 
   // ── Handlers ───────────────────────────────────────────────────────
 
@@ -343,8 +362,46 @@ export default function SalesTrackerPage() {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Purchases");
 
       const today = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(workbook, `sales-export-${today}.xlsx`);
-      showToast("success", "Exported sales-export-" + today + ".xlsx");
+      const filename = `sales-export-${today}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+
+      // Also save the summarization of the data to the database
+      let snapshotSaved = false;
+      try {
+        const saveRes = await fetch("/api/saved-summaries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ export_filename: filename }),
+        });
+        if (saveRes.ok) {
+          const newSnapshot = await saveRes.json();
+          setSavedSummaries((prev) => [newSnapshot, ...prev]);
+          snapshotSaved = true;
+        }
+      } catch (err) {
+        console.error("Failed to save summary snapshot:", err);
+      }
+
+      // Delete all sales data to save up database storage
+      try {
+        const delRes = await fetch("/api/sales", {
+          method: "DELETE",
+        });
+        if (delRes.ok) {
+          setSales([]);
+          showToast(
+            "success",
+            snapshotSaved
+              ? `Exported ${filename}, saved summary to database, and cleared sales data to save storage!`
+              : `Exported ${filename} and cleared sales data to save storage!`
+          );
+        } else {
+          showToast("success", `Exported ${filename}`);
+        }
+      } catch (delErr) {
+        console.error("Failed to clear sales data:", delErr);
+        showToast("success", `Exported ${filename}`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to export Excel";
       showToast("error", msg);
@@ -556,191 +613,53 @@ export default function SalesTrackerPage() {
             isSidebarOpen ? "w-64" : "w-0 -translate-x-full md:translate-x-0 md:w-16"
           }`}
         >
-          <div className="p-4 flex flex-col gap-5 flex-1 overflow-y-auto">
-            
-            {/* Nav Categories */}
-            <div className="flex flex-col gap-1">
-              <span
-                className={`text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5 mb-1 ${
-                  !isSidebarOpen && "md:hidden"
-                }`}
-              >
-                Views &amp; Filters
+          <div className="p-3 flex flex-col gap-2 flex-1 overflow-y-auto">
+            {isSidebarOpen && (
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5 mb-1">
+                Navigation
               </span>
-
-              {/* All Purchases Link */}
-              <button
-                type="button"
-                onClick={() => setActiveFilter("all")}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
-                  activeFilter === "all"
-                    ? "bg-gradient-to-r from-[#E31B73]/25 to-[#FF77B9]/20 text-[#FFFDE6] border border-[#E31B73]/50 shadow-md shadow-[#E31B73]/15"
-                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <TrendingUp size={16} className="text-[#FF77B9]" />
-                  {isSidebarOpen && <span>All Purchases</span>}
-                </div>
-                {isSidebarOpen && (
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#2a1032] text-[#FFA4D2]">
-                    {sales.length}
-                  </span>
-                )}
-              </button>
-
-              {/* VIP Spenders Link */}
-              <button
-                type="button"
-                onClick={() => setActiveFilter("vip")}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
-                  activeFilter === "vip"
-                    ? "bg-[#E31B73]/30 text-[#FFFDE6] border border-[#E31B73]/60 shadow-md shadow-[#E31B73]/20"
-                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Crown size={16} className="text-[#E31B73]" />
-                  {isSidebarOpen && <span>VIP Spenders</span>}
-                </div>
-                {isSidebarOpen && (
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#E31B73]/20 text-[#FF77B9]">
-                    {sales.filter((s) => s.tier?.toLowerCase() === "vip").length}
-                  </span>
-                )}
-              </button>
-
-              {/* Free Tier Link */}
-              <button
-                type="button"
-                onClick={() => setActiveFilter("free")}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
-                  activeFilter === "free"
-                    ? "bg-[#FFA4D2]/25 text-[#FFFDE6] border border-[#FFA4D2]/50 shadow-md shadow-[#FFA4D2]/15"
-                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Gift size={16} className="text-[#FFA4D2]" />
-                  {isSidebarOpen && <span>Free Tier</span>}
-                </div>
-                {isSidebarOpen && (
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#FFA4D2]/20 text-[#FFA4D2]">
-                    {sales.filter((s) => s.tier?.toLowerCase() === "free").length}
-                  </span>
-                )}
-              </button>
-
-              {/* None Tier Link */}
-              <button
-                type="button"
-                onClick={() => setActiveFilter("none")}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition ${
-                  activeFilter === "none"
-                    ? "bg-[#FFFDE6]/20 text-[#FFFDE6] border border-[#FFFDE6]/40 shadow-md shadow-[#FFFDE6]/15"
-                    : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <CircleDot size={16} className="text-[#FFFDE6]" />
-                  {isSidebarOpen && <span>None Tier</span>}
-                </div>
-                {isSidebarOpen && (
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#FFFDE6]/15 text-[#FFFDE6]">
-                    {sales.filter((s) => s.tier?.toLowerCase() === "none" || !s.tier).length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Models Directory Section */}
-            {isSidebarOpen && (
-              <div className="flex flex-col gap-2 pt-2 border-t border-[#FFA4D2]/15">
-                <div className="flex items-center justify-between px-2.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 flex items-center gap-1.5">
-                    <Users size={12} />
-                    Models
-                  </span>
-                  <button
-                    type="button"
-                    title="Add new model"
-                    onClick={() => setIsAddingModel(true)}
-                    className="p-1 rounded-md bg-[#250f2c] hover:bg-[#34143d] text-[#FFA4D2] hover:text-[#FFFDE6] border border-[#FFA4D2]/25"
-                  >
-                    <Plus size={12} />
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
-                  {models.map((m) => {
-                    const isModelActive = activeFilter === `model:${m.name}`;
-                    const count = modelCounts[m.name] || 0;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() =>
-                          setActiveFilter(isModelActive ? "all" : `model:${m.name}`)
-                        }
-                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                          isModelActive
-                            ? "bg-[#E31B73]/25 text-[#FFFDE6] border border-[#E31B73]/40 font-bold"
-                            : "text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6]"
-                        }`}
-                      >
-                        <span className="truncate">{m.name}</span>
-                        <span className="text-[10px] font-mono text-[#FFA4D2] opacity-80">
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             )}
 
-            {/* Quick Actions in Sidebar */}
-            {isSidebarOpen && (
-              <div className="flex flex-col gap-2 pt-2 border-t border-[#FFA4D2]/15">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5">
-                  Quick Actions
+            {/* Dashboard Link (Active on this page) */}
+            <Link
+              href="/"
+              title="Dashboard"
+              className={`w-full flex items-center ${
+                isSidebarOpen ? "justify-between px-3.5" : "justify-center px-2"
+              } py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-[#E31B73]/30 via-[#FF77B9]/20 to-[#E31B73]/20 text-[#FFFDE6] border border-[#E31B73]/50 shadow-md shadow-[#E31B73]/15 transition group`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <LayoutDashboard
+                  size={18}
+                  className="text-[#FF77B9] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && <span className="truncate">Dashboard</span>}
+              </div>
+            </Link>
+
+            {/* Saved Summaries Link */}
+            <Link
+              href="/saved-summaries"
+              title="Saved Summaries"
+              className={`w-full flex items-center ${
+                isSidebarOpen ? "justify-between px-3.5" : "justify-center px-2"
+              } py-2.5 rounded-xl font-bold text-xs text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6] border border-transparent hover:border-[#FFA4D2]/20 transition group`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FolderClock
+                  size={18}
+                  className="text-[#FFA4D2]/80 group-hover:text-[#FF77B9] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="truncate">Saved Summaries</span>
+                )}
+              </div>
+              {isSidebarOpen && savedSummaries.length > 0 && (
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#E31B73]/30 text-[#FFFDE6] border border-[#E31B73]/40 shrink-0">
+                  {savedSummaries.length}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPurchaseText(SAMPLE_TEXT);
-                    setInlineParseError(null);
-                    showToast("success", "Sample message loaded into purchase text");
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[#230d2a] hover:bg-[#2f1238] border border-[#FFA4D2]/20 text-xs font-bold text-[#FFA4D2] transition text-left"
-                >
-                  <Sparkles size={14} className="text-[#FF77B9]" />
-                  <span>Load Sample Text</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenSummary}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[#230d2a] hover:bg-[#2f1238] border border-[#FFA4D2]/20 text-xs font-bold text-[#FFFDE6] transition text-left"
-                >
-                  <BarChart3 size={14} className="text-[#FF77B9]" />
-                  <span>View Full Summary</span>
-                </button>
-              </div>
-            )}
-
-            {/* Bottom Status Card */}
-            {isSidebarOpen && (
-              <div className="mt-auto p-3 bg-[#200e26] border border-[#FFA4D2]/20 rounded-2xl flex flex-col gap-1.5 text-[11px] shadow-inner">
-                <div className="flex items-center gap-2 font-bold text-[#FFFDE6]">
-                  <Database size={13} className="text-[#FF77B9]" />
-                  <span>Database Connected</span>
-                </div>
-                <p className="text-[10px] text-[#d9a0c2]">
-                  Postgres on Supabase with server-side service role key.
-                </p>
-              </div>
-            )}
+              )}
+            </Link>
           </div>
         </aside>
 

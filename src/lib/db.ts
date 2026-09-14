@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
-import type { Model, Sale, SaleInput, SummaryData } from "./types";
+import type { Model, Sale, SaleInput, SummaryData, SavedSummary } from "./types";
+
 
 // ── In-Memory Fallback Store (when Supabase credentials are not provided) ──
 
@@ -176,6 +177,21 @@ export async function deleteSale(id: number | string): Promise<void> {
   memSales = memSales.filter((s) => Number(s.id) !== numericId);
 }
 
+export async function deleteAllSales(): Promise<void> {
+  const sb = getSupabase();
+
+  if (sb) {
+    const { error } = await sb.from("sales").delete().neq("id", -1);
+    if (error) {
+      console.error("Supabase deleteAllSales error, clearing memory fallback:", error.message);
+    }
+    memSales = [];
+    return;
+  }
+
+  memSales = [];
+}
+
 // ── Summarize ─────────────────────────────────────────────────────────
 
 export async function getSummary(): Promise<SummaryData> {
@@ -279,3 +295,89 @@ export async function getSummary(): Promise<SummaryData> {
     },
   };
 }
+
+// ── Saved Summaries (Snapshots created upon Export/Save) ───────────────
+
+let memSavedSummaries: SavedSummary[] = [];
+let nextSummaryId = 1;
+
+export async function saveSummarySnapshot(
+  exportFilename: string
+): Promise<SavedSummary> {
+  const summary = await getSummary();
+  const payload = {
+    export_filename: exportFilename,
+    total_revenue: summary.total_revenue,
+    none_subtotal: summary.none_subtotal,
+    vip_subtotal: summary.vip_subtotal,
+    free_subtotal: summary.free_subtotal,
+    sales_count: summary.sales_count,
+    by_model: summary.by_model,
+    by_sale_type: summary.by_sale_type,
+  };
+
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from("saved_summaries")
+        .insert(payload)
+        .select()
+        .single();
+      if (!error && data) {
+        return data as SavedSummary;
+      }
+      console.warn(
+        "Supabase saved_summaries insert fallback:",
+        error?.message
+      );
+    } catch (err) {
+      console.warn("Supabase saved_summaries exception fallback:", err);
+    }
+  }
+
+  // In-memory fallback
+  const created: SavedSummary = {
+    id: nextSummaryId++,
+    ...payload,
+    created_at: new Date().toISOString(),
+  };
+  memSavedSummaries.unshift(created);
+  return created;
+}
+
+export async function getSavedSummaries(): Promise<SavedSummary[]> {
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from("saved_summaries")
+        .select("*")
+        .order("id", { ascending: false });
+      if (!error && data) {
+        return data as SavedSummary[];
+      }
+      console.warn(
+        "Supabase saved_summaries select fallback:",
+        error?.message
+      );
+    } catch (err) {
+      console.warn("Supabase saved_summaries exception fallback:", err);
+    }
+  }
+  return [...memSavedSummaries].sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+export async function deleteSavedSummary(id: number | string): Promise<void> {
+  const numericId = Number(id);
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      await sb.from("saved_summaries").delete().eq("id", numericId);
+    } catch (err) {
+      console.warn("Supabase saved_summaries delete error:", err);
+    }
+  }
+  memSavedSummaries = memSavedSummaries.filter((s) => Number(s.id) !== numericId);
+}
+

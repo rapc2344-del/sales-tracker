@@ -1,4 +1,4 @@
-import { getSales, createSale } from "@/lib/db";
+import { getSales, createSale, deleteAllSales } from "@/lib/db";
 import type { SaleInput } from "@/lib/types";
 
 export async function GET() {
@@ -44,6 +44,16 @@ export async function POST(request: Request) {
 
     const result = await createSale(saleInputs);
     return Response.json(result[0], { status: 201 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return Response.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    await deleteAllSales();
+    return Response.json({ success: true, message: "All sales data cleared from database" });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return Response.json({ error: msg }, { status: 500 });

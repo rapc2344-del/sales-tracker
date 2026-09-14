@@ -46,6 +46,20 @@ export interface SummaryData {
   none_subtotal: number;
   by_model: { model: string; revenue: number; count: number }[];
   by_sale_type: { sale_type: string; revenue: number; count: number }[];
-  top_buyer: { name: string; username: string; total_spend: number; count: number } | null;
-  date_range: { min_date: string | null; max_date: string | null };
+  top_buyer?: { name: string; username: string; total_spend: number; count: number } | null;
+  date_range?: { min_date: string | null; max_date: string | null };
 }
+
+export interface SavedSummary {
+  id: number;
+  export_filename: string;
+  total_revenue: number;
+  none_subtotal: number;
+  vip_subtotal: number;
+  free_subtotal: number;
+  sales_count: number;
+  by_model: { model: string; revenue: number; count: number }[];
+  by_sale_type: { sale_type: string; revenue: number; count: number }[];
+  created_at: string;
+}
+
