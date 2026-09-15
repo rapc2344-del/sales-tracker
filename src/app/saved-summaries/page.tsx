@@ -27,6 +27,7 @@ import {
   Receipt,
 } from "lucide-react";
 import type { SavedSummary } from "@/lib/types";
+import { parseSummaryDate, getCutoffForDate } from "@/app/invoice/page";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -42,6 +43,7 @@ export default function SavedSummariesPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedModelFilter, setSelectedModelFilter] = useState<string>("all");
+  const [selectedCutoffFilter, setSelectedCutoffFilter] = useState<string>("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [toast, setToast] = useState<{
     type: "success" | "error";
@@ -99,6 +101,22 @@ export default function SavedSummariesPage() {
     return Array.from(modelsSet).sort();
   }, [savedSummaries]);
 
+  // Distinct cutoffs across all saved snapshots
+  const allCutoffs = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; type: "8-23" | "24-7"; count: number }>();
+    savedSummaries.forEach((s) => {
+      const date = parseSummaryDate(s);
+      const cutoff = getCutoffForDate(date);
+      const existing = map.get(cutoff.id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(cutoff.id, { id: cutoff.id, label: cutoff.label, type: cutoff.type, count: 1 });
+      }
+    });
+    return Array.from(map.values());
+  }, [savedSummaries]);
+
   // Filtered summaries
   const filteredSummaries = useMemo(() => {
     return savedSummaries.filter((s) => {
@@ -115,9 +133,16 @@ export default function SavedSummariesPage() {
           (m) => m.model.toLowerCase() === selectedModelFilter.toLowerCase()
         );
 
-      return matchesSearch && matchesModel;
+      let matchesCutoff = true;
+      if (selectedCutoffFilter !== "all") {
+        const date = parseSummaryDate(s);
+        const cutoff = getCutoffForDate(date);
+        matchesCutoff = cutoff.id === selectedCutoffFilter || cutoff.type === selectedCutoffFilter;
+      }
+
+      return matchesSearch && matchesModel && matchesCutoff;
     });
-  }, [savedSummaries, searchQuery, selectedModelFilter]);
+  }, [savedSummaries, searchQuery, selectedModelFilter, selectedCutoffFilter]);
 
   // Aggregate metrics
   const totalCumulativeRevenue = useMemo(() => {
@@ -413,6 +438,35 @@ export default function SavedSummariesPage() {
               )}
             </div>
 
+            {/* Cutoff Filter Dropdown */}
+            <div className="flex items-center gap-2 shrink-0">
+              <label htmlFor="cutoffFilterSelect" className="text-xs font-bold text-[#FFA4D2]/80 flex items-center gap-1.5 shrink-0">
+                <Calendar size={13} className="text-[#FF77B9]" />
+                <span>Cutoff:</span>
+              </label>
+              <select
+                id="cutoffFilterSelect"
+                value={selectedCutoffFilter}
+                onChange={(e) => setSelectedCutoffFilter(e.target.value)}
+                className="bg-[#120815] border border-[#FFA4D2]/25 rounded-xl px-3 py-2 text-xs font-semibold text-[#FFFDE6] focus:outline-none focus:border-[#E31B73] focus:ring-1 focus:ring-[#E31B73] cursor-pointer"
+              >
+                <option value="all">All Cutoffs ({allCutoffs.length})</option>
+                <optgroup label="Standard Ranges">
+                  <option value="8-23">Range 8th – 23rd</option>
+                  <option value="24-7">Range 24th – 7th</option>
+                </optgroup>
+                {allCutoffs.length > 0 && (
+                  <optgroup label="Logged Cutoff Periods">
+                    {allCutoffs.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-[#180a1c] text-[#FFFDE6]">
+                        {c.label} ({c.count} {c.count === 1 ? "shift" : "shifts"})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
             {/* Model Filter Dropdown */}
             <div className="flex items-center gap-2 shrink-0">
               <label htmlFor="modelFilterSelect" className="text-xs font-bold text-[#FFA4D2]/80 flex items-center gap-1.5 shrink-0">
@@ -433,6 +487,20 @@ export default function SavedSummariesPage() {
                 ))}
               </select>
             </div>
+
+            {/* Create Cutoff Invoice Button */}
+            <Link
+              href={
+                selectedCutoffFilter !== "all"
+                  ? `/invoice?${selectedCutoffFilter.includes("_") ? `cutoffId=${selectedCutoffFilter}` : `cutoff=${selectedCutoffFilter}`}`
+                  : "/invoice?cutoff=current"
+              }
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#E31B73] to-[#FF77B9] text-[#FFFDE6] text-xs font-bold shadow-md shadow-[#E31B73]/25 hover:shadow-[#E31B73]/40 transition flex items-center gap-1.5 shrink-0"
+              title="Generate Invoice with line items automatically grouped from this cutoff period"
+            >
+              <Receipt size={13} />
+              <span>Create Cutoff Invoice</span>
+            </Link>
           </div>
 
           {/* Snapshot List or Empty State */}
@@ -559,14 +627,23 @@ export default function SavedSummariesPage() {
 
                         {/* Actions */}
                         <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(summary.id, summary.export_filename)}
-                            title="Delete this snapshot"
-                            className="p-1.5 rounded-lg text-[#FFA4D2]/50 hover:text-red-300 hover:bg-red-500/20 transition"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Link
+                              href={`/invoice?summaryId=${summary.id}`}
+                              title="Create Invoice from this summary"
+                              className="p-1.5 rounded-lg text-[#FFA4D2]/80 hover:text-[#FFFDE6] hover:bg-[#E31B73]/30 transition inline-flex items-center"
+                            >
+                              <Receipt size={14} />
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(summary.id, summary.export_filename)}
+                              title="Delete this snapshot"
+                              className="p-1.5 rounded-lg text-[#FFA4D2]/50 hover:text-red-300 hover:bg-red-500/20 transition"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

@@ -392,36 +392,91 @@ select.input-field {
 /* ── Print Styles for Invoice Output ─────────── */
 @media print {
   @page {
-    size: auto;
-    margin: 15mm;
+    size: letter portrait;
+    margin: 0;
   }
 
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
   body {
     background: #ffffff !important;
-    color: #111827 !important;
+    background-color: #ffffff !important;
     background-image: none !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
-  /* Hide app navigation and controls when printing */
+  /* Hide app navigation, header, sidebar, toast, buttons when printing */
   header,
   aside,
-  .no-print,
+  nav,
   button,
-  .view-switcher {
+  .no-print {
     display: none !important;
   }
 
-  /* Invoice document takes full width on printed page */
+  /* Strip all dark backgrounds, borders, shadows, paddings from all parent wrapper containers */
+  #__next,
+  body > div,
+  main,
+  section,
+  article,
+  div {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Invoice document printed layout: US Letter */
   .invoice-printable-sheet {
     box-shadow: none !important;
     border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    border-radius: 0 !important;
+    padding: 14mm 16mm !important;
+    margin: 0 auto !important;
+    width: 8.5in !important;
+    max-width: 8.5in !important;
+    min-height: auto !important;
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #111827 !important;
     display: block !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Maintain table header and balance banner backgrounds */
+  .invoice-table-header {
+    background-color: #374151 !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .invoice-balance-banner {
+    background-color: #f2f4f7 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }
+
 
