@@ -915,10 +915,11 @@ export default function SalesTrackerPage() {
               {/* Spec notes card */}
               <div className="mt-1 p-3 bg-[#150819]/80 border border-[#FFA4D2]/15 rounded-xl text-[11px] text-[#d9a0c2] flex flex-col gap-0.5">
                 <span className="font-bold text-[#FFFDE6]">Format Guide:</span>
-                <span>🐳(Name)</span>
+                <span>Name (e.g. Mo or 🐳(Name))</span>
                 <span>@username</span>
-                <span>... date MM/DD/YY</span>
-                <span>has purchased your [type] for $[amount]!</span>
+                <span>has purchased your [message] for $20.00!</span>
+                <span className="text-[#FFA4D2]/90 font-medium">or: paid you a tip of $1.00</span>
+                <span>Date: Sep. 18, 2026 or MM/DD/YY</span>
               </div>
             </section>
 
