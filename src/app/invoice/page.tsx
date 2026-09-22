@@ -25,8 +25,10 @@ import {
   Clock,
   ArrowRight,
   Zap,
+  FileSpreadsheet,
 } from "lucide-react";
 import type { Sale, SavedSummary } from "@/lib/types";
+
 
 interface InvoiceItem {
   id: string;
@@ -97,18 +99,19 @@ export interface CutoffPeriodInfo {
 }
 
 export function parseSummaryDate(summary: SavedSummary): Date {
-  // Check if export_filename contains YYYY-MM-DD
+  if (summary.created_at) {
+    const d = new Date(summary.created_at);
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Fallback to export_filename if contains YYYY-MM-DD
   const match = summary.export_filename?.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (match) {
     const d = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00`);
     if (!isNaN(d.getTime())) return d;
   }
-  if (summary.created_at) {
-    const d = new Date(summary.created_at);
-    if (!isNaN(d.getTime())) return d;
-  }
   return new Date();
 }
+
 
 export function getCutoffForDate(date: Date, now: Date = new Date()): CutoffPeriodInfo {
   const y = date.getFullYear();
@@ -893,8 +896,28 @@ function InvoiceGeneratorContent() {
                 )}
               </div>
             </Link>
+
+            {/* Attendance Tracker Link */}
+            <Link
+              href="/attendance-tracker"
+              title="Attendance Tracker"
+              className={`w-full flex items-center ${
+                isSidebarOpen ? "justify-between px-3.5" : "justify-center px-2"
+              } py-2.5 rounded-xl font-bold text-xs text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6] border border-transparent hover:border-[#FFA4D2]/20 transition group`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FileSpreadsheet
+                  size={18}
+                  className="text-[#FFA4D2]/80 group-hover:text-[#FF77B9] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="truncate">Attendance Tracker</span>
+                )}
+              </div>
+            </Link>
           </div>
         </aside>
+
 
         {/* ── MAIN CONTENT WORKSPACE ───────────────────────── */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-[#120815] print:p-0 print:m-0 print:bg-white print:overflow-visible print:block">

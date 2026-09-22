@@ -368,6 +368,81 @@ export async function getSavedSummaries(): Promise<SavedSummary[]> {
   return [...memSavedSummaries].sort((a, b) => Number(b.id) - Number(a.id));
 }
 
+export async function getSavedSummaryById(id: number | string): Promise<SavedSummary | null> {
+  const numericId = Number(id);
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from("saved_summaries")
+        .select("*")
+        .eq("id", numericId)
+        .single();
+      if (!error && data) {
+        return data as SavedSummary;
+      }
+    } catch (err) {
+      console.warn("Supabase saved_summaries select by id error:", err);
+    }
+  }
+  const found = memSavedSummaries.find((s) => Number(s.id) === numericId);
+  return found || null;
+}
+
+export async function updateSavedSummary(
+  id: number | string,
+  updates: Partial<SavedSummary>
+): Promise<SavedSummary | null> {
+  const numericId = Number(id);
+  const sb = getSupabase();
+
+  const payload: Record<string, unknown> = {};
+  if (updates.export_filename !== undefined) payload.export_filename = updates.export_filename;
+  if (updates.total_revenue !== undefined) payload.total_revenue = Number(updates.total_revenue);
+  if (updates.none_subtotal !== undefined) payload.none_subtotal = Number(updates.none_subtotal);
+  if (updates.vip_subtotal !== undefined) payload.vip_subtotal = Number(updates.vip_subtotal);
+  if (updates.free_subtotal !== undefined) payload.free_subtotal = Number(updates.free_subtotal);
+  if (updates.sales_count !== undefined) payload.sales_count = Number(updates.sales_count);
+  if (updates.by_model !== undefined) payload.by_model = updates.by_model;
+  if (updates.by_sale_type !== undefined) payload.by_sale_type = updates.by_sale_type;
+  if (updates.created_at !== undefined) payload.created_at = updates.created_at;
+
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from("saved_summaries")
+        .update(payload)
+        .eq("id", numericId)
+        .select()
+        .single();
+      if (!error && data) {
+        const idx = memSavedSummaries.findIndex((s) => Number(s.id) === numericId);
+        if (idx !== -1) {
+          memSavedSummaries[idx] = data as SavedSummary;
+        }
+        return data as SavedSummary;
+      }
+      console.warn("Supabase saved_summaries update fallback:", error?.message);
+    } catch (err) {
+      console.warn("Supabase saved_summaries update exception:", err);
+    }
+  }
+
+  // In-memory fallback
+  const idx = memSavedSummaries.findIndex((s) => Number(s.id) === numericId);
+  if (idx !== -1) {
+    const existing = memSavedSummaries[idx];
+    const updated: SavedSummary = {
+      ...existing,
+      ...payload,
+    };
+    memSavedSummaries[idx] = updated;
+    return updated;
+  }
+
+  return null;
+}
+
 export async function deleteSavedSummary(id: number | string): Promise<void> {
   const numericId = Number(id);
   const sb = getSupabase();
@@ -380,4 +455,5 @@ export async function deleteSavedSummary(id: number | string): Promise<void> {
   }
   memSavedSummaries = memSavedSummaries.filter((s) => Number(s.id) !== numericId);
 }
+
 

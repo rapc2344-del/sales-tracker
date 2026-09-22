@@ -680,8 +680,28 @@ export default function SalesTrackerPage() {
                 )}
               </div>
             </Link>
+
+            {/* Attendance Tracker (Google Sheet) Link */}
+            <Link
+              href="/attendance-tracker"
+              title="Attendance Tracker"
+              className={`w-full flex items-center ${
+                isSidebarOpen ? "justify-between px-3.5" : "justify-center px-2"
+              } py-2.5 rounded-xl font-bold text-xs text-[#d9a0c2] hover:bg-[#250f2c] hover:text-[#FFFDE6] border border-transparent hover:border-[#FFA4D2]/20 transition group`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FileSpreadsheet
+                  size={18}
+                  className="text-[#FFA4D2]/80 group-hover:text-[#FF77B9] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="truncate">Attendance Tracker</span>
+                )}
+              </div>
+            </Link>
           </div>
         </aside>
+
 
         {/* ── MAIN CONTENT WORKSPACE ───────────────────────── */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-6">
