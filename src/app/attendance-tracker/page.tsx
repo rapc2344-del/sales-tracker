@@ -22,16 +22,19 @@ import {
   Check,
   Zap,
   RefreshCw,
+  Printer,
 } from "lucide-react";
 
 import type { SavedSummary } from "@/lib/types";
 import {
   getCutoffForDate,
+  getCurrentCutoff,
   groupSummariesByCutoff,
   calculateShiftBonusAndRate,
   parseSummaryDate,
   type GroupedCutoff,
-} from "@/app/invoice/page";
+} from "@/lib/cutoff";
+import CreateInvoiceModal from "@/components/CreateInvoiceModal";
 
 function formatCurrency(val: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -107,7 +110,9 @@ export interface RowOverride {
 }
 
 export default function AttendanceTrackerPage() {
+  const currentCutoff = getCurrentCutoff();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isCreateInvoiceModalOpen, setIsCreateInvoiceModalOpen] = useState(false);
   const [savedSummaries, setSavedSummaries] = useState<SavedSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -525,6 +530,36 @@ export default function AttendanceTrackerPage() {
           } transition-all duration-300 ease-in-out bg-[#18091d] border-r border-[#FFA4D2]/15 flex flex-col justify-between shrink-0 p-3`}
         >
           <div className="flex flex-col gap-1.5">
+            {/* ── CREATE INVOICE (CURRENT CUTOFF) BUTTON ── */}
+            <button
+              type="button"
+              onClick={() => setIsCreateInvoiceModalOpen(true)}
+              title={`Create Invoice PDF for Current Cutoff (${currentCutoff.label})`}
+              className={`w-full flex flex-col ${
+                isSidebarOpen ? "p-3 text-left" : "p-2.5 items-center justify-center text-center"
+              } rounded-xl bg-gradient-to-r from-[#E31B73] via-[#f0287d] to-[#FF77B9] hover:from-[#c91564] hover:to-[#ff5ea9] text-[#FFFDE6] font-black shadow-lg shadow-[#E31B73]/30 hover:shadow-[#E31B73]/50 transition-all duration-200 group mb-2 border border-[#FF77B9]/40 cursor-pointer`}
+            >
+              <div className="flex items-center gap-2">
+                <Printer
+                  size={16}
+                  className="text-[#FFFDE6] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="text-xs uppercase tracking-wider font-extrabold truncate">
+                    Create Invoice
+                  </span>
+                )}
+              </div>
+              {isSidebarOpen && (
+                <div className="flex items-center justify-between gap-1 text-[10px] font-medium text-[#FFFDE6]/90 pl-6 pt-1">
+                  <span className="truncate">{currentCutoff.label}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[9px] font-mono font-bold shrink-0">
+                    PDF
+                  </span>
+                </div>
+              )}
+            </button>
+
             {isSidebarOpen && (
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#FFA4D2]/50 px-3 py-1">
                 Navigation
@@ -1310,6 +1345,12 @@ export default function AttendanceTrackerPage() {
           </div>
         </div>
       )}
+
+      {/* ── CREATE INVOICE & GSHEET CONFIRMATION MODAL ── */}
+      <CreateInvoiceModal
+        isOpen={isCreateInvoiceModalOpen}
+        onClose={() => setIsCreateInvoiceModalOpen(false)}
+      />
     </div>
   );
 }

@@ -30,10 +30,12 @@ import {
   Plus,
   Calculator,
   ClipboardPaste,
+  Printer,
 } from "lucide-react";
 import type { SavedSummary, Tier } from "@/lib/types";
-import { parseSummaryDate, getCutoffForDate } from "@/app/invoice/page";
+import { parseSummaryDate, getCutoffForDate, getCurrentCutoff } from "@/lib/cutoff";
 import { parsePurchaseText } from "@/lib/parser";
+import CreateInvoiceModal from "@/components/CreateInvoiceModal";
 
 const SAMPLE_TEXT = `🐳(Kody)
 @u80636081
@@ -50,12 +52,14 @@ function formatCurrency(value: number): string {
 }
 
 export default function SavedSummariesPage() {
+  const currentCutoff = getCurrentCutoff();
   const [savedSummaries, setSavedSummaries] = useState<SavedSummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedModelFilter, setSelectedModelFilter] = useState<string>("all");
   const [selectedCutoffFilter, setSelectedCutoffFilter] = useState<string>("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [isCreateInvoiceModalOpen, setIsCreateInvoiceModalOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     type: "success" | "error";
     message: string;
@@ -531,6 +535,36 @@ export default function SavedSummariesPage() {
           }`}
         >
           <div className="p-3 flex flex-col gap-2 flex-1 overflow-y-auto">
+            {/* ── CREATE INVOICE (CURRENT CUTOFF) BUTTON ── */}
+            <button
+              type="button"
+              onClick={() => setIsCreateInvoiceModalOpen(true)}
+              title={`Create Invoice PDF for Current Cutoff (${currentCutoff.label})`}
+              className={`w-full flex flex-col ${
+                isSidebarOpen ? "p-3 text-left" : "p-2.5 items-center justify-center text-center"
+              } rounded-xl bg-gradient-to-r from-[#E31B73] via-[#f0287d] to-[#FF77B9] hover:from-[#c91564] hover:to-[#ff5ea9] text-[#FFFDE6] font-black shadow-lg shadow-[#E31B73]/30 hover:shadow-[#E31B73]/50 transition-all duration-200 group mb-2 border border-[#FF77B9]/40 cursor-pointer`}
+            >
+              <div className="flex items-center gap-2">
+                <Printer
+                  size={16}
+                  className="text-[#FFFDE6] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="text-xs uppercase tracking-wider font-extrabold truncate">
+                    Create Invoice
+                  </span>
+                )}
+              </div>
+              {isSidebarOpen && (
+                <div className="flex items-center justify-between gap-1 text-[10px] font-medium text-[#FFFDE6]/90 pl-6 pt-1">
+                  <span className="truncate">{currentCutoff.label}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[9px] font-mono font-bold shrink-0">
+                    PDF
+                  </span>
+                </div>
+              )}
+            </button>
+
             {isSidebarOpen && (
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5 mb-1">
                 Navigation
@@ -1420,6 +1454,12 @@ export default function SavedSummariesPage() {
           </div>
         </div>
       )}
+
+      {/* ── CREATE INVOICE & GSHEET CONFIRMATION MODAL ── */}
+      <CreateInvoiceModal
+        isOpen={isCreateInvoiceModalOpen}
+        onClose={() => setIsCreateInvoiceModalOpen(false)}
+      />
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import type { Sale, SavedSummary } from "@/lib/types";
+import CreateInvoiceModal from "@/components/CreateInvoiceModal";
 
 
 interface InvoiceItem {
@@ -86,246 +87,36 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-// ── Cutoff Period Rules (8-23 and 24-7) ───────────────────
-export interface CutoffPeriodInfo {
-  id: string; // e.g. "2026-09-08_2026-09-23"
-  label: string; // e.g. "Sep 8 – Sep 23, 2026"
-  type: "8-23" | "24-7";
-  startDate: string;
-  endDate: string;
-  displayStartDate: string;
-  displayEndDate: string;
-  isCurrent: boolean;
-}
-
-export function parseSummaryDate(summary: SavedSummary): Date {
-  if (summary.created_at) {
-    const d = new Date(summary.created_at);
-    if (!isNaN(d.getTime())) return d;
-  }
-  // Fallback to export_filename if contains YYYY-MM-DD
-  const match = summary.export_filename?.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    const d = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00`);
-    if (!isNaN(d.getTime())) return d;
-  }
-  return new Date();
-}
-
-
-export function getCutoffForDate(date: Date, now: Date = new Date()): CutoffPeriodInfo {
-  const y = date.getFullYear();
-  const m = date.getMonth();
-  const day = date.getDate();
-
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-  let start: Date;
-  let end: Date;
-  let label: string;
-  let type: "8-23" | "24-7";
-  let displayStart: string;
-  let displayEnd: string;
-  let id: string;
-
-  if (day >= 8 && day <= 23) {
-    start = new Date(y, m, 8, 0, 0, 0, 0);
-    end = new Date(y, m, 23, 23, 59, 59, 999);
-    type = "8-23";
-    const mStr = String(m + 1).padStart(2, "0");
-    id = `${y}-${mStr}-08_${y}-${mStr}-23`;
-    label = `${monthNames[m]} 8 – ${monthNames[m]} 23, ${y}`;
-    displayStart = `${monthNames[m]} 8, ${y}`;
-    displayEnd = `${monthNames[m]} 23, ${y}`;
-  } else if (day >= 24) {
-    start = new Date(y, m, 24, 0, 0, 0, 0);
-    const nextM = (m + 1) % 12;
-    const nextY = m === 11 ? y + 1 : y;
-    end = new Date(nextY, nextM, 7, 23, 59, 59, 999);
-    type = "24-7";
-    const mStr = String(m + 1).padStart(2, "0");
-    const nextMStr = String(nextM + 1).padStart(2, "0");
-    id = `${y}-${mStr}-24_${nextY}-${nextMStr}-07`;
-    label = `${monthNames[m]} 24 – ${monthNames[nextM]} 7, ${nextY}`;
-    displayStart = `${monthNames[m]} 24, ${y}`;
-    displayEnd = `${monthNames[nextM]} 7, ${nextY}`;
-  } else {
-    // day <= 7
-    const prevM = (m + 11) % 12;
-    const prevY = m === 0 ? y - 1 : y;
-    start = new Date(prevY, prevM, 24, 0, 0, 0, 0);
-    end = new Date(y, m, 7, 23, 59, 59, 999);
-    type = "24-7";
-    const prevMStr = String(prevM + 1).padStart(2, "0");
-    const mStr = String(m + 1).padStart(2, "0");
-    id = `${prevY}-${prevMStr}-24_${y}-${mStr}-07`;
-    label = `${monthNames[prevM]} 24 – ${monthNames[m]} 7, ${y}`;
-    displayStart = `${monthNames[prevM]} 24, ${prevY}`;
-    displayEnd = `${monthNames[m]} 7, ${y}`;
-  }
-
-  const isCurrent = now >= start && now <= end;
-
-  return {
-    id,
-    label,
-    type,
-    startDate: start.toISOString(),
-    endDate: end.toISOString(),
-    displayStartDate: displayStart,
-    displayEndDate: displayEnd,
-    isCurrent,
-  };
-}
-
-export interface GroupedCutoff {
-  info: CutoffPeriodInfo;
-  summaries: SavedSummary[];
-  totalRevenue: number;
-  shiftCount: number;
-  tierBreakdown: {
-    tier: number;
-    bonusLabel: string;
-    rate: number;
-    shiftCount: number;
-    hours: number;
-    subtotal: number;
-  }[];
-}
-
-export function groupSummariesByCutoff(
-  summaries: SavedSummary[],
-  hoursPerShift: number = 8
-): GroupedCutoff[] {
-  const map = new Map<string, { info: CutoffPeriodInfo; summaries: SavedSummary[] }>();
-
-  for (const s of summaries) {
-    const date = parseSummaryDate(s);
-    const cutoff = getCutoffForDate(date);
-    const existing = map.get(cutoff.id);
-    if (existing) {
-      existing.summaries.push(s);
-    } else {
-      map.set(cutoff.id, { info: cutoff, summaries: [s] });
-    }
-  }
-
-  // Ensure current cutoff is always present even if 0 summaries logged yet
-  const currentCutoff = getCutoffForDate(new Date());
-  if (!map.has(currentCutoff.id)) {
-    map.set(currentCutoff.id, { info: currentCutoff, summaries: [] });
-  }
-
-  const result: GroupedCutoff[] = [];
-
-  for (const { info, summaries: sumList } of map.values()) {
-    const sorted = [...sumList].sort(
-      (a, b) => parseSummaryDate(a).getTime() - parseSummaryDate(b).getTime()
-    );
-
-    const tierMap = new Map<
-      number,
-      {
-        tier: number;
-        bonusLabel: string;
-        rate: number;
-        shiftCount: number;
-        hours: number;
-        subtotal: number;
-      }
-    >();
-
-    let totalRev = 0;
-    for (const s of sorted) {
-      const rev = s.total_revenue || 0;
-      totalRev += rev;
-      const { tier, bonusLabel, rate } = calculateShiftBonusAndRate(rev);
-      const existing = tierMap.get(tier) || {
-        tier,
-        bonusLabel,
-        rate,
-        shiftCount: 0,
-        hours: 0,
-        subtotal: 0,
-      };
-      existing.shiftCount += 1;
-      existing.hours += hoursPerShift;
-      existing.subtotal += hoursPerShift * rate;
-      tierMap.set(tier, existing);
-    }
-
-    const tierBreakdown = Array.from(tierMap.values()).sort((a, b) => a.tier - b.tier);
-
-    result.push({
-      info,
-      summaries: sorted,
-      totalRevenue: totalRev,
-      shiftCount: sorted.length,
-      tierBreakdown,
-    });
-  }
-
-  return result.sort(
-    (a, b) => new Date(b.info.startDate).getTime() - new Date(a.info.startDate).getTime()
-  );
-}
-
-// ── Rate & Bonus Calculation Rules ────────────────────────
-// - < $500: (No bonuses) -> Rate $1.75
-// - $500: ($500 sales bonus) -> Rate $2.00
-// - $1000: ($1,000 sales bonus) -> Rate $3.00
-// - $1500: ($1,500 sales bonus) -> Rate $3.50
-// - $2000: ($2,000 sales bonus) -> Rate $4.00
-export function calculateShiftBonusAndRate(revenue: number) {
-  if (revenue < 500) {
-    return {
-      bonusLabel: "No bonuses",
-      rate: 1.75,
-      tier: 0,
-      formattedBonus: "No bonuses",
-    };
-  }
-
-  const tier = Math.floor(revenue / 500) * 500;
-  const formattedTier = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(tier);
-
-  let rate = 2.0;
-  if (tier >= 2000) {
-    const extra = Math.floor((tier - 2000) / 500);
-    rate = 4.0 + extra * 0.5;
-  } else if (tier >= 1500) {
-    rate = 3.5;
-  } else if (tier >= 1000) {
-    rate = 3.0;
-  } else if (tier >= 500) {
-    rate = 2.0;
-  }
-
-  return {
-    bonusLabel: `${formattedTier} sales bonus`,
-    rate,
-    tier,
-    formattedBonus: `${formattedTier} sales bonus`,
-  };
-}
-
-export function formatShiftItemDescription(
-  bonusLabel: string,
-  shift: string = "0AM CET - 8AM CET",
-  tl: string = "TL Lore"
-): string {
-  return `WE Social Media Management (${bonusLabel}) ${shift}\n${tl}`;
-}
+// ── Cutoff Period Utilities & Rules (8-23 and 24-7) ─────────
+export {
+  getCutoffForDate,
+  getCurrentCutoff,
+  groupSummariesByCutoff,
+  calculateShiftBonusAndRate,
+  formatShiftItemDescription,
+  parseSummaryDate,
+  type CutoffPeriodInfo,
+  type GroupedCutoff,
+} from "@/lib/cutoff";
+import {
+  getCutoffForDate,
+  getCurrentCutoff,
+  groupSummariesByCutoff,
+  calculateShiftBonusAndRate,
+  formatShiftItemDescription,
+  parseSummaryDate,
+  type CutoffPeriodInfo,
+  type GroupedCutoff,
+} from "@/lib/cutoff";
 
 function InvoiceGeneratorContent() {
   const searchParams = useSearchParams();
   const summaryIdParam = searchParams.get("summaryId");
   const cutoffParam = searchParams.get("cutoff");
   const cutoffIdParam = searchParams.get("cutoffId");
+  const isCreatePdfParam = searchParams.get("createPdf") === "true" || searchParams.get("print") === "true";
+
+  const currentCutoffInfo = getCurrentCutoff();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<"editor" | "preview" | "split">("editor");
@@ -336,7 +127,7 @@ function InvoiceGeneratorContent() {
   const [billTo, setBillTo] = useState(DEFAULT_BILL_TO);
   const [shipTo, setShipTo] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("25");
-  const [invoiceDate, setInvoiceDate] = useState("Sep 8, 2026");
+  const [invoiceDate, setInvoiceDate] = useState(currentCutoffInfo.displayEndDate);
   const [paymentTerms, setPaymentTerms] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [poNumber, setPoNumber] = useState("");
@@ -367,11 +158,12 @@ function InvoiceGeneratorContent() {
 
   // Saved Summaries & Cutoff Auto-Fill State
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isCreateInvoiceModalOpen, setIsCreateInvoiceModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState<"cutoff" | "single" | "presets">("cutoff");
   const [savedSummariesList, setSavedSummariesList] = useState<SavedSummary[]>([]);
   const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
   const [selectedSummaryId, setSelectedSummaryId] = useState<number | null>(null);
-  const [selectedCutoffId, setSelectedCutoffId] = useState<string | null>(null);
+  const [selectedCutoffId, setSelectedCutoffId] = useState<string | null>(currentCutoffInfo.id);
   const [shiftTime, setShiftTime] = useState("0AM CET - 8AM CET");
   const [tlName, setTlName] = useState("TL Lore");
   const [shiftHours, setShiftHours] = useState(8);
@@ -400,7 +192,7 @@ function InvoiceGeneratorContent() {
     fetchSummaries();
   };
 
-  // Grouped Cutoffs computed from saved summaries
+  // Grouped Cutoffs computed from saved summaries (Current running cutoff always comes first)
   const groupedCutoffs = useMemo(() => {
     return groupSummariesByCutoff(savedSummariesList, shiftHours);
   }, [savedSummariesList, shiftHours]);
@@ -409,7 +201,8 @@ function InvoiceGeneratorContent() {
     if (selectedCutoffId) {
       return groupedCutoffs.find((c) => c.info.id === selectedCutoffId) || groupedCutoffs[0] || null;
     }
-    return groupedCutoffs.find((c) => c.summaries.length > 0) || groupedCutoffs[0] || null;
+    // Default strictly to the currently running cutoff
+    return groupedCutoffs.find((c) => c.info.isCurrent) || groupedCutoffs[0] || null;
   }, [groupedCutoffs, selectedCutoffId]);
 
   // Apply a Single Saved Summary to Invoice Line Items
@@ -453,7 +246,7 @@ function InvoiceGeneratorContent() {
     );
   };
 
-  // Apply an entire Cutoff Range to Invoice Line Items (groups identical tiers, separates different sales tiers)
+  // Apply an entire Cutoff Range to Invoice Line Items
   const handleApplyCutoff = (
     cutoff: GroupedCutoff,
     customShift: string = shiftTime,
@@ -461,8 +254,23 @@ function InvoiceGeneratorContent() {
     hours: number = shiftHours,
     mode: "replace" | "append" = "replace"
   ) => {
+    // If cutoff has no saved shifts yet, still apply current cutoff dates and generate a template item
     if (cutoff.summaries.length === 0) {
-      showToast(`Cutoff "${cutoff.info.label}" has no saved summaries yet.`);
+      const defaultItem: InvoiceItem = {
+        id: `item-cutoff-current-${Date.now()}`,
+        description: formatShiftItemDescription("No bonuses", customShift, customTl),
+        quantity: 0,
+        rate: 1.75,
+      };
+      if (mode === "replace") {
+        setItems([defaultItem]);
+      } else {
+        setItems((prev) => [...prev, defaultItem]);
+      }
+      setInvoiceDate(cutoff.info.displayEndDate);
+      setSelectedCutoffId(cutoff.info.id);
+      setIsSummaryModalOpen(false);
+      showToast(`Applied Cutoff (${cutoff.info.label}) — Ready for shift hours`);
       return;
     }
 
@@ -510,6 +318,7 @@ function InvoiceGeneratorContent() {
 
     // Set invoice date to Cutoff's End Date
     setInvoiceDate(cutoff.info.displayEndDate);
+    setSelectedCutoffId(cutoff.info.id);
 
     setIsSummaryModalOpen(false);
     const totalHrs = sortedTiers.reduce((s, g) => s + g.hours, 0);
@@ -527,16 +336,41 @@ function InvoiceGeneratorContent() {
       const data: SavedSummary[] = await res.json();
       setSavedSummariesList(data);
       const cutoffs = groupSummariesByCutoff(data, shiftHours);
-      const current = cutoffs.find((c) => c.summaries.length > 0) || cutoffs[0];
-      if (current && current.summaries.length > 0) {
+      // Strictly detect the currently running cutoff (never fall back to past cutoffs)
+      const current = cutoffs.find((c) => c.info.isCurrent) || cutoffs[0];
+      if (current) {
+        setSelectedCutoffId(current.info.id);
         handleApplyCutoff(current, shiftTime, tlName, shiftHours, "replace");
-      } else {
-        showToast("No saved summaries found in current cutoff. Opening cutoff selector...");
-        setIsSummaryModalOpen(true);
-        setModalTab("cutoff");
       }
     } catch {
       showToast("Error loading cutoff summaries");
+    }
+  };
+
+  // Instant Create Invoice PDF for Current Cutoff
+  const handleCreateCurrentInvoicePdf = async () => {
+    try {
+      let cutoffs = groupedCutoffs;
+      if (savedSummariesList.length === 0) {
+        const res = await fetch("/api/saved-summaries");
+        if (res.ok) {
+          const data: SavedSummary[] = await res.json();
+          setSavedSummariesList(data);
+          cutoffs = groupSummariesByCutoff(data, shiftHours);
+        }
+      }
+      const current = cutoffs.find((c) => c.info.isCurrent) || cutoffs[0];
+      if (current) {
+        setSelectedCutoffId(current.info.id);
+        handleApplyCutoff(current, shiftTime, tlName, shiftHours, "replace");
+      }
+      setViewMode("preview");
+      showToast(`Generating invoice PDF for current cutoff: ${current?.info.label || currentCutoffInfo.label}`);
+      setTimeout(() => {
+        window.print();
+      }, 400);
+    } catch {
+      window.print();
     }
   };
 
@@ -561,9 +395,9 @@ function InvoiceGeneratorContent() {
     showToast(`Applied ${bonusLabel} at $${rate}/hr for ${shiftHours} hrs`);
   };
 
-  // Auto-apply if URL has ?summaryId= or ?cutoff= or ?cutoffId=
+  // Auto-apply if URL has ?summaryId= or ?cutoff= or ?cutoffId= or ?createPdf=true / ?print=true
   useEffect(() => {
-    if (!summaryIdParam && !cutoffParam && !cutoffIdParam) return;
+    if (!summaryIdParam && !cutoffParam && !cutoffIdParam && !isCreatePdfParam) return;
     const loadParamData = async () => {
       try {
         const res = await fetch("/api/saved-summaries");
@@ -571,25 +405,54 @@ function InvoiceGeneratorContent() {
         const list: SavedSummary[] = await res.json();
         setSavedSummariesList(list);
 
-        if (summaryIdParam) {
+        const cutoffs = groupSummariesByCutoff(list, shiftHours);
+        const currentCutoffEntry = cutoffs.find((c) => c.info.isCurrent) || cutoffs[0];
+
+        if (cutoffParam === "current" || (!summaryIdParam && !cutoffIdParam && isCreatePdfParam)) {
+          if (currentCutoffEntry) {
+            setSelectedCutoffId(currentCutoffEntry.info.id);
+            handleApplyCutoff(currentCutoffEntry, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
+          }
+          if (isCreatePdfParam) {
+            setViewMode("preview");
+            setTimeout(() => {
+              window.print();
+            }, 500);
+          }
+        } else if (cutoffIdParam) {
+          const target = cutoffs.find((c) => c.info.id === cutoffIdParam);
+          if (target) {
+            setSelectedCutoffId(target.info.id);
+            handleApplyCutoff(target, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
+          }
+          if (isCreatePdfParam) {
+            setViewMode("preview");
+            setTimeout(() => {
+              window.print();
+            }, 500);
+          }
+        } else if (cutoffParam) {
+          const target = cutoffs.find((c) => c.info.type === cutoffParam) || currentCutoffEntry;
+          if (target) {
+            setSelectedCutoffId(target.info.id);
+            handleApplyCutoff(target, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
+          }
+          if (isCreatePdfParam) {
+            setViewMode("preview");
+            setTimeout(() => {
+              window.print();
+            }, 500);
+          }
+        } else if (summaryIdParam) {
           const target = list.find((s) => String(s.id) === String(summaryIdParam));
           if (target) {
             handleApplySummary(target, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
           }
-        } else if (cutoffIdParam) {
-          const cutoffs = groupSummariesByCutoff(list, 8);
-          const target = cutoffs.find((c) => c.info.id === cutoffIdParam);
-          if (target && target.summaries.length > 0) {
-            handleApplyCutoff(target, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
-          }
-        } else if (cutoffParam) {
-          const cutoffs = groupSummariesByCutoff(list, 8);
-          const target =
-            cutoffParam === "current"
-              ? cutoffs.find((c) => c.summaries.length > 0) || cutoffs[0]
-              : cutoffs.find((c) => c.info.type === cutoffParam && c.summaries.length > 0) || cutoffs[0];
-          if (target && target.summaries.length > 0) {
-            handleApplyCutoff(target, "0AM CET - 8AM CET", "TL Lore", 8, "replace");
+          if (isCreatePdfParam) {
+            setViewMode("preview");
+            setTimeout(() => {
+              window.print();
+            }, 500);
           }
         }
       } catch {
@@ -597,7 +460,7 @@ function InvoiceGeneratorContent() {
       }
     };
     loadParamData();
-  }, [summaryIdParam, cutoffParam, cutoffIdParam]);
+  }, [summaryIdParam, cutoffParam, cutoffIdParam, isCreatePdfParam]);
 
   // Selected summary in modal
   const selectedSummary = useMemo(() => {
@@ -746,11 +609,11 @@ function InvoiceGeneratorContent() {
           <button
             type="button"
             onClick={handleQuickFillCurrentCutoff}
-            title="Auto-fill line items from active cutoff period (8-23 or 24-7)"
+            title={`Auto-fill line items from active cutoff period (${currentCutoffInfo.label})`}
             className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#E31B73]/25 to-[#FF77B9]/20 hover:from-[#E31B73]/40 hover:to-[#FF77B9]/30 border border-[#FF77B9]/40 text-xs font-semibold text-[#FFFDE6] transition cursor-pointer shadow-sm shadow-[#E31B73]/20"
           >
             <Calendar size={13} className="text-[#FF77B9]" />
-            <span>Apply Cutoff (8-23 / 24-7)</span>
+            <span>Apply Current Cutoff ({currentCutoffInfo.label})</span>
           </button>
 
           <button
@@ -836,6 +699,36 @@ function InvoiceGeneratorContent() {
           }`}
         >
           <div className="p-3 flex flex-col gap-2 flex-1 overflow-y-auto">
+            {/* ── CREATE INVOICE (CURRENT CUTOFF) BUTTON ── */}
+            <button
+              type="button"
+              onClick={() => setIsCreateInvoiceModalOpen(true)}
+              title={`Create Invoice PDF for Current Cutoff (${currentCutoffInfo.label})`}
+              className={`w-full flex flex-col ${
+                isSidebarOpen ? "p-3 text-left" : "p-2.5 items-center justify-center text-center"
+              } rounded-xl bg-gradient-to-r from-[#E31B73] via-[#f0287d] to-[#FF77B9] hover:from-[#c91564] hover:to-[#ff5ea9] text-[#FFFDE6] font-black shadow-lg shadow-[#E31B73]/30 hover:shadow-[#E31B73]/50 transition-all duration-200 group mb-2 border border-[#FF77B9]/40 cursor-pointer`}
+            >
+              <div className="flex items-center gap-2">
+                <Printer
+                  size={16}
+                  className="text-[#FFFDE6] group-hover:scale-110 transition-transform shrink-0"
+                />
+                {isSidebarOpen && (
+                  <span className="text-xs uppercase tracking-wider font-extrabold truncate">
+                    Create Invoice
+                  </span>
+                )}
+              </div>
+              {isSidebarOpen && (
+                <div className="flex items-center justify-between gap-1 text-[10px] font-medium text-[#FFFDE6]/90 pl-6 pt-1">
+                  <span className="truncate">{currentCutoffInfo.label}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[9px] font-mono font-bold shrink-0">
+                    PDF
+                  </span>
+                </div>
+              )}
+            </button>
+
             {isSidebarOpen && (
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#FFA4D2]/60 px-2.5 mb-1">
                 Navigation
@@ -1934,6 +1827,13 @@ function InvoiceGeneratorContent() {
           </div>
         </div>
       )}
+
+      {/* ── CREATE INVOICE & GSHEET CONFIRMATION MODAL ── */}
+      <CreateInvoiceModal
+        isOpen={isCreateInvoiceModalOpen}
+        onClose={() => setIsCreateInvoiceModalOpen(false)}
+        onProceedDirectly={handleCreateCurrentInvoicePdf}
+      />
     </div>
   );
 }
